@@ -1,0 +1,7 @@
+.env
+.env.*
+**/bearer*.txt
+**/*secret*
+**/*private*
+**/auth-*.json
+node_modules/
