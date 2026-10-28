@@ -1,57 +1,34 @@
-# 本地 Agent · 今晚上手清单
+# 本地 Agent · 上手与验收清单
 
-目标：在 Grok Bot 周额度耗尽后，**接力例行盯盘 + 用户授权的打新**，并读懂历史结论。
+## 启动前
 
-## 启动前（一次）
+- [ ] 阅读 `README.md`、`WORKFLOW.md`、`MONITORING.md`。
+- [ ] Node.js ≥18，执行 `npm ci`。
+- [ ] 核对 `config/default.json` 的预期钱包与 `config/projects.json` 的 CA/ABI。
+- [ ] 如需私有 RPC，只通过 `BSC_HTTP_RPCS` / `BSC_WSS_URLS` 配置，不写进 git。
+- [ ] 确认 `data/`、`.env`、bearer、baw 会话均在忽略规则内。
 
-- [ ] 通读 `README.md` → `WORKFLOW.md` → `MONITORING.md`
-- [ ] 记下钱包 `0x2840…99b8` / handle `renee` / POA **#18497**
-- [ ] 确认本机 `baw`（或等价）已登录且能 `wallet address` 对上上述地址
-- [ ] 准备 BSC 只读 RPC；可选安装 `ethers` 跑 `scripts/flap-portal-scan.mjs`
-- [ ] **不要**把私钥、bearer、密码拷进 git
+## 只读验收
 
-## 今晚优先（按上海时间）
+- [ ] `npm run check` 通过。
+- [ ] `npm run once -- 0.001` 能读取真实 Flap 日志、已知项目和 pipfun 快照。
+- [ ] 再跑一次，已处理的 `txHash:logIndex` 不重复触发。
+- [ ] `npm run observe` 能启动 WSS 和回补，Ctrl+C 后保存游标。
+- [ ] `node scripts/mint-ops.mjs mint boo` 在免费额度已用时于 BAW 之前停止。
+- [ ] 默认配置下所有真实执行均被阻止；未发生任何 `baw execute`。
 
-- [ ] **读** `artifacts/VERIFY-2026-10-28-1308.md` + `artifacts/nft-inventory.md` —— 建立「当前值得/已打/勿打」心智模型
-- [ ] **JAGENT**：只盯新 CA / `paused` / 开池；**禁止**再打旧 mint（已 10/10 + paused）
-- [ ] **Flap**：若落在 2h 槽，跑 `node scripts/flap-portal-scan.mjs 3`，有实质再报
-- [ ] **Worldygg**：官宣称约 **21:00 上海** 开铸 —— 仍无硬 CA 时只监控，出现 CA 再 Sourcify+门禁
-- [ ] **BLOB**：若仍可 mint 且用户要补；已持有则考虑是否 `claim`（另需授权）
-- [ ] **Ptah POA**：若明日白天接力 —— 10:00 前准备广场/X 打卡；先查 `entered`
+## 日常判断
 
-## 每次 Mint 盯盘槽（9/13/18/22）
+- [ ] 新 CA 先核 `eth_getCode`、Sourcify、门禁、selector、费用与供应。
+- [ ] 缺字段/回退是“未知”，不是 0，也不是安全。
+- [ ] 只有 substantialChange 才通知；异常才读 `data/ai-queue.jsonl`。
+- [ ] 旧回补事件不得被当成刚发生的新盘。
+- [ ] JAGENT 旧 CA 只盯换约/开池，禁止再 mint。
+- [ ] 付费 mint、swap、卖出、Nonce attempt 仍需独立授权。
 
-- [ ] 对比上一 SCAN/VERIFY 基线
-- [ ] 复扫：JAGENT、BLOB 剩余、VERIFY 里「值得」且未满额项目
-- [ ] X：官号 + 新 soft CA（或等价搜索）
-- [ ] `substantialChange`？是 → 中文通知 + 写 SCAN；否 → 可静默
-- [ ] 深核：Sourcify + SPACE vs EOA + 费用档；写「是否值得观察」五维
-- [ ] **无用户授权 → 停止在汇报**
+## 真实执行前另行检查
 
-## 用户说「打免费」时
-
-- [ ] 列出将打的 CA / selector / 预期 value=0
-- [ ] 逐个 `hasMinted`/`freeLeft` 预检
-- [ ] 执行 → 记 inventory → 回传 tx
-- [ ] 付费档**不要**顺手打
-
-## Nonce
-
-- [ ] 未授权：**零** `start_attempt`
-- [ ] 若用户要打：先 health/admission；429 则延期并报告
-
-## 汇报口吻
-
-- 中文；非投资建议；未参与 / 已按授权参与 要写清
-- 费用写 BNB 与 ≈USD
-- 时间标 **Asia/Shanghai**
-
-## 交接完成标准
-
-本地 Agent 应能独立回答：
-
-1. 三轨是什么？谁深核、谁搜 X？
-2. Flap Portal CA 与脚本怎么跑？
-3. 什么叫 substantialChange？
-4. 今晚绝对不要再打哪个项目？
-5. Ptah #18497 每日怎么进抽奖？
+- [ ] 用户已明确指定项目、数量和授权范围。
+- [ ] `autoAllowed`、项目白名单、armed 和命令参数均是有意设置，而不是 AI 自行修改。
+- [ ] 钱包地址、Developer Mode、钱包锁、零费用和 preview 全部通过。
+- [ ] 超时或 App 确认不自动重试；先查真实订单和链上回执。

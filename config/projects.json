@@ -1,0 +1,153 @@
+[
+  {
+    "id": "jagent",
+    "name": "JAGENT",
+    "address": "0x120215D5DebeF4e337Ae7dF0793c68e54259782E",
+    "enabled": true,
+    "abi": [
+      "function paused() view returns (bool)",
+      "function mintingOpen() view returns (bool)",
+      "function totalMinted() view returns (uint256)",
+      "function openedAt() view returns (uint256)",
+      "function pair() view returns (address)",
+      "function currentPrice() view returns (uint256)"
+    ],
+    "reads": [
+      { "key": "paused", "method": "paused" },
+      { "key": "mintOpen", "method": "mintingOpen" },
+      { "key": "totalMinted", "method": "totalMinted" },
+      { "key": "openedAt", "method": "openedAt" },
+      { "key": "pair", "method": "pair" },
+      { "key": "price", "method": "currentPrice" }
+    ],
+    "maxSupply": 10000,
+    "supplyKey": "totalMinted",
+    "watchKeys": ["paused", "mintOpen", "openedAt", "pair", "price"],
+    "notes": "旧 CA；钱包已满额。只盯换约和开池，不执行 mint。"
+  },
+  {
+    "id": "ocrystal",
+    "name": "Onchain Crystals",
+    "address": "0xe0574c002d10cdf00949c9ce23614c9b2e9dd1ce",
+    "enabled": true,
+    "abi": [
+      "function mintOpen() view returns (bool)",
+      "function totalSupply() view returns (uint256)",
+      "function MAX_SUPPLY() view returns (uint256)",
+      "function MAX_PER_WALLET() view returns (uint256)",
+      "function FREE_PER_WALLET() view returns (uint256)",
+      "function mintedBy(address) view returns (uint256)",
+      "function priceFor(address,uint256) view returns (uint256)",
+      "function mint(uint256) payable"
+    ],
+    "reads": [
+      { "key": "mintOpen", "method": "mintOpen" },
+      { "key": "totalSupply", "method": "totalSupply" },
+      { "key": "maxSupply", "method": "MAX_SUPPLY" },
+      { "key": "maxPerWallet", "method": "MAX_PER_WALLET" },
+      { "key": "freePerWallet", "method": "FREE_PER_WALLET" },
+      { "key": "walletMinted", "method": "mintedBy", "args": ["{wallet}"] },
+      { "key": "price", "method": "priceFor", "args": ["{wallet}", 1] }
+    ],
+    "supplyKey": "totalSupply",
+    "watchKeys": ["mintOpen", "price"],
+    "execution": {
+      "kind": "erc721",
+      "function": "mint(uint256)",
+      "args": [1],
+      "value": "0",
+      "autoAllowed": false,
+      "requires": [{ "key": "mintOpen", "equals": true }, { "key": "walletMinted", "lt": "2" }, { "key": "price", "equals": "0" }]
+    }
+  },
+  {
+    "id": "dwg",
+    "name": "DigiWarriors Genesis",
+    "address": "0x2106674431f6672d71777356bD7AB2999562d5b1",
+    "enabled": true,
+    "abi": [
+      "function mintOpen() view returns (bool)",
+      "function totalMinted() view returns (uint256)",
+      "function MAX_SUPPLY() view returns (uint256)",
+      "function freeLeft(address) view returns (uint256)",
+      "function quote(address,uint256) view returns (uint256)",
+      "function quickMint(uint256) payable"
+    ],
+    "reads": [
+      { "key": "mintOpen", "method": "mintOpen" },
+      { "key": "totalMinted", "method": "totalMinted" },
+      { "key": "maxSupply", "method": "MAX_SUPPLY" },
+      { "key": "freeLeft", "method": "freeLeft", "args": ["{wallet}"] },
+      { "key": "price", "method": "quote", "args": ["{wallet}", 1] }
+    ],
+    "supplyKey": "totalMinted",
+    "watchKeys": ["mintOpen", "price"],
+    "execution": {
+      "kind": "erc721",
+      "function": "quickMint(uint256)",
+      "args": [1],
+      "value": "0",
+      "autoAllowed": false,
+      "requires": [{ "key": "mintOpen", "equals": true }, { "key": "freeLeft", "gt": "0" }, { "key": "price", "equals": "0" }]
+    }
+  },
+  {
+    "id": "boo",
+    "name": "BOO",
+    "address": "0x783a3fCdb4Ef41D37cCD017B2726c739aD123dEb",
+    "enabled": true,
+    "abi": [
+      "function mintOpen() view returns (bool)",
+      "function totalMinted() view returns (uint256)",
+      "function MAX_SUPPLY() view returns (uint256)",
+      "function mintedBy(address) view returns (uint256)",
+      "function priceFor(address,uint256) view returns (uint256)",
+      "function mint(uint256) payable"
+    ],
+    "reads": [
+      { "key": "mintOpen", "method": "mintOpen" },
+      { "key": "totalMinted", "method": "totalMinted" },
+      { "key": "maxSupply", "method": "MAX_SUPPLY" },
+      { "key": "walletMinted", "method": "mintedBy", "args": ["{wallet}"] },
+      { "key": "price", "method": "priceFor", "args": ["{wallet}", 1] }
+    ],
+    "supplyKey": "totalMinted",
+    "watchKeys": ["mintOpen", "price"],
+    "execution": {
+      "kind": "erc721",
+      "function": "mint(uint256)",
+      "args": [1],
+      "value": "0",
+      "autoAllowed": false,
+      "requires": [{ "key": "mintOpen", "equals": true }, { "key": "walletMinted", "equals": "0" }, { "key": "price", "equals": "0" }]
+    }
+  },
+  {
+    "id": "blob",
+    "name": "BLOB Miner",
+    "address": "0x4ADDBd796eDF3d4d186Fb5AA314cAfF3F98984A6",
+    "enabled": true,
+    "abi": [
+      "function totalSupply() view returns (uint256)",
+      "function MAX_SUPPLY() view returns (uint256)",
+      "function hasMinted(address) view returns (bool)",
+      "function mint() payable",
+      "function claim(uint256[])"
+    ],
+    "reads": [
+      { "key": "totalSupply", "method": "totalSupply" },
+      { "key": "maxSupply", "method": "MAX_SUPPLY" },
+      { "key": "hasMinted", "method": "hasMinted", "args": ["{wallet}"] }
+    ],
+    "supplyKey": "totalSupply",
+    "watchKeys": ["hasMinted"],
+    "execution": {
+      "kind": "erc721",
+      "function": "mint()",
+      "args": [],
+      "value": "0",
+      "autoAllowed": false,
+      "requires": [{ "key": "hasMinted", "equals": false }]
+    }
+  }
+]

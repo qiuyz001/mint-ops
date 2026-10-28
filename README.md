@@ -1,48 +1,88 @@
-# Mint Ops Handoff · 本地 Agent 接力包
+# Mint Ops · 事件驱动的 BSC 打新与盯盘
 
-- **生成时间**：2026-10-28 约 14:50 Asia/Shanghai
-- **来源**：Grok Bot「币安钱包 / mint 盯盘」会话备份（只读交接，**无私钥/密码/API token**）
-- **对象**：Randy 本机本地 Agent —— 承接例行盯盘、线索核验汇报、以及用户授权后的免费 mint / 登记
-- **语言**：中文为主；合约地址、函数名、项目名可保留英文
+这是一个从 `mint-ops-handoff` 演进的本地运行系统：用确定性脚本替代 AI 全市场定时扫描，AI 只负责异常解释、信息收集和规则建议。
 
-## 这是什么
+默认只读/模拟。**不会自动付费 mint、自动 swap 或自动卖出，也不会在未显式配置时自动免费 mint。**
 
-本目录是一套**自洽交接文档**：说明工作怎么做、信息从哪来、例行时刻表、钱包与持仓约定、Nonce 注意点，并附带 2026-10-28 最新 SCAN/VERIFY/Flap 摘要与持仓清单副本。
+## 运行结构
 
-**不是**自动交易机器人说明；默认规则始终是：**找线索 → 核验 → 汇报 → 等用户授权再 mint**。
+```text
+BSC WSS / getLogs / 项目 API
+  → 标准化事件与真实区块时间
+  → 本地去重、状态机、规则引擎
+  → 静默 / substantialChange 通知 / 模拟策略卡
+  → 异常才进入 AI 队列
+  → 人工批准的项目与执行授权
+  → baw preview → execute → 实际回执对账
+```
 
-## 如何使用（本地 Agent 今晚）
+- `src/watchers/`：Flap、Four、Gang、pipfun 与已知 CA 适配器。
+- `src/rules.js`：开关、进度、费用、extension 等实质变化判断。
+- `src/store.js`：游标、事件去重、项目状态、执行预留与异常持久化。
+- `src/execution/`：免费 mint 白名单、BAW 预演/执行和 ERC-721 回执解析。
+- `artifacts/`：原交接报告与历史持仓快照，保留作证据，不在每次扫描时重写给 AI。
 
-1. 先读 [`LOCAL-AGENT-CHECKLIST.md`](./LOCAL-AGENT-CHECKLIST.md)
-2. 再读 [`WORKFLOW.md`](./WORKFLOW.md) + [`MONITORING.md`](./MONITORING.md)
-3. 需要动手时对照 [`WALLET-AND-MINTS.md`](./WALLET-AND-MINTS.md)、[`ROUTINES.md`](./ROUTINES.md)、[`SOURCES.md`](./SOURCES.md)
-4. 细节事实以 [`artifacts/`](./artifacts/) 内最新报告为准；链上以 eth_call / Sourcify 复核，勿盲信社媒 CA
-5. Nonce Genesis 另见 [`NONCE.md`](./NONCE.md) —— **未授权不要 `start_attempt`（会占额度）**
+## 安装与只读运行
 
-## 文件索引
+要求 Node.js 18+。
 
-| 文件 | 用途 |
-|------|------|
-| `README.md` | 本说明 |
-| `WORKFLOW.md` | 分工与端到端流程 |
-| `MONITORING.md` | 三轨盯盘 + Flap 轻扫 + substantialChange + 汇报模板 |
-| `SOURCES.md` | 信息源与队友角色 |
-| `ROUTINES.md` | Asia/Shanghai 例行时刻表 |
-| `WALLET-AND-MINTS.md` | 公开钱包/handle、持仓、免费优先、Ptah POA |
-| `NONCE.md` | Nonce Genesis 高层流程与现状 |
-| `ARTIFACTS.md` | artifacts/ 索引 |
-| `LOCAL-AGENT-CHECKLIST.md` | 今晚上手清单 |
-| `scripts/flap-portal-scan.mjs` | Flap Portal 只读扫描脚本 |
-| `scripts/jager-status.mjs` | JAGENT 旧/参考探针示例（CA 可能已过时，用前核对） |
-| `artifacts/*` | 最新报告与 inventory 副本 |
+```bash
+npm ci
+npm run once -- 0.01       # 扫描约 0.01 小时的区块，并读取已知项目
+npm run observe            # 常驻观察；无真实执行
+npm run status             # 本地游标与状态摘要
+```
 
-## 硬约束（务必遵守）
+兼容原入口：
 
-- **不自动参与** mint / swap / 卖出；付费 mint 必须先报 **≈USD** 并等用户明确授权
-- 汇报用中文；固定写「**是否值得观察**」及维度（见 MONITORING）
-- **无密钥写入本仓**；签名走本机已配置的钱包 CLI（如 `baw`），预览后再 execute
-- 非投资建议；所有进度数字会变，动手前链上复扫
+```bash
+node scripts/flap-portal-scan.mjs 0.01
+node scripts/jager-status.mjs
+```
 
-## GitHub
+所有运行数据写入项目内 `data/`，已被 git 忽略。可用 `MINT_OPS_DATA_DIR` 改到其他本地目录。
 
-本包先落在箱路径 `/workspace/mint-ops-handoff/`。父层若要建 GitHub 仓：把本目录推成公开/私有仓均可，但**不要**把含密钥的 `baw` 会话、Bearer、`.env` 一并提交。本交接包刻意不含这些内容。
+## 配置
+
+- `config/default.json`：RPC、冷热分频、进度阈值、模拟策略、钱包和执行总开关。
+- `config/projects.json`：已知项目的 CA、ABI、读取字段、停止条件和执行选择器。
+- `BSC_HTTP_RPCS` / `BSC_WSS_URLS`：逗号分隔的自定义节点，私有 key 只放环境变量，不写进仓。
+- `MINT_OPS_WEBHOOK_URL`：可选，仅推送 substantialChange。
+- `BAW_BIN`：默认 `baw`。
+
+Flap 启动时只回补有限区块，之后使用 WSS 增量和游标补查。旧事件会建档，但不会冒充刚发生的新盘触发快盘策略。
+
+## 模拟与执行
+
+`src/strategy.js` 可生成发射盘模拟卡，但 `action=preview_only`，不含自动买入金额，不代表建议或成交承诺。
+
+免费 mint 预览：
+
+```bash
+node scripts/mint-ops.mjs mint boo
+```
+
+预览前仍会先检查链上免费额度、价格、开关和供应；条件不满足时不会调用 BAW。真实执行必须同时满足：
+
+1. 项目 `execution.autoAllowed=true`，且仍在人工审核后的配置中；
+2. 项目 ID 加入 `execution.allowedProjects`；
+3. 设置 `MINT_OPS_ARMED=1`；
+4. 命令显式携带 `--execute`；
+5. 钱包、Developer Mode、钱包锁、零费用、selector、额度和 preview 全部通过。
+
+当前仓库内所有项目均为 `autoAllowed=false`，执行总开关也为 `false`。不要通过改配置绕过人工核验；付费 mint、swap 和卖出不在当前自动执行范围。
+
+## AI 异常队列
+
+`data/ai-queue.jsonl` 只接收：未知 ABI、Sourcify/selector 不闭合、RPC 冲突、连续读取失败、未知 revert、App 确认或结果未知等异常。AI 的输出只能是证据摘要、置信度、建议动作和规则补丁建议，不能直接修改阈值或开启交易。
+
+## 文档地图
+
+- `WORKFLOW.md`：端到端运行与角色边界
+- `MONITORING.md`：状态机、通知和冷热分频
+- `ROUTINES.md`：新调度模型与已退役的 AI 定时扫描
+- `LOCAL-AGENT-CHECKLIST.md`：只读验收和上手检查
+- `WALLET-AND-MINTS.md`：钱包政策与历史持仓
+- `NONCE.md`：Nonce 专项；未授权不得 `start_attempt`
+
+非投资建议。新盘、NFT 和领取操作都可能亏损或失败；任何真实操作前必须重新核对链上状态。

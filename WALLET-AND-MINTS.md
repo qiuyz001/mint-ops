@@ -21,10 +21,12 @@
 
 ## 政策
 
-- **免费优先**（value=0，仅 gas）—— 用户常授权「免费的都打」
+- **免费优先**（value=0，仅 gas）—— 用户常授权「免费的都打」；但新运行时仍默认全部禁止执行。
 - **付费**：先报 BNB 与 **≈USD**，等明确授权（例：JAGENT 10 份、Nomio）
-- **不自动卖**；二级提醒规则见 inventory「盯盘规则」段（成本参照=该项目付费档 mint 价）
-- 每项目注意 `MAX_PER_WALLET` / `hasMinted` / `freeLeft`，避免重复打 revert
+- **不自动卖、不自动 swap**；二级提醒规则见 inventory「盯盘规则」段（成本参照=该项目付费档 mint 价）
+- 每项目注意 `MAX_PER_WALLET` / `hasMinted` / `freeLeft` / `mintedBy`，避免重复打 revert。
+- 免费 mint 自动执行必须同时通过项目 `autoAllowed`、执行白名单、`MINT_OPS_ARMED=1`、显式 `--execute` 和 BAW preview；当前所有项目的 `autoAllowed=false`。
+- 新成交以真实回执写入 `data/receipts.jsonl`；`artifacts/nft-inventory.md` 是历史快照，不由 watcher 自动覆盖。
 
 ## 截至 2026-10-28 14:20 已持有（摘要）
 

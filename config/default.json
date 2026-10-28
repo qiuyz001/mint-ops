@@ -1,0 +1,46 @@
+{
+  "chainId": 56,
+  "dataDir": "./data",
+  "mode": "observe",
+  "rpc": {
+    "http": [
+      "https://bsc-rpc.publicnode.com",
+      "https://bsc.publicnode.com",
+      "https://1rpc.io/bnb",
+      "https://bsc-dataseed.bnbchain.org"
+    ],
+    "wss": [
+      "wss://bsc-rpc.publicnode.com"
+    ],
+    "timeoutMs": 12000,
+    "logStep": 50,
+    "backfillBlocks": 200,
+    "backfillNormalSec": 60,
+    "backfillDownSec": 5
+  },
+  "intervals": {
+    "coldSec": 900,
+    "watchSec": 60,
+    "hotSec": 3,
+    "pipfunSec": 300
+  },
+  "thresholds": [70, 90, 95, 100],
+  "strategy": {
+    "maxNewTokenAgeSec": 30,
+    "quotes": ["BNB", "WBNB"],
+    "maxBuyTaxBps": 500,
+    "maxSellTaxBps": 500,
+    "takeProfit": [{ "multiple": 2, "sellPct": 50 }],
+    "stopLossPct": 50,
+    "maxHoldHours": 72
+  },
+  "wallet": {
+    "expectedAddress": "0x2840ebb9EcBb55f3f0C973ae9544b16266Cf99b8"
+  },
+  "execution": {
+    "armed": false,
+    "allowedProjects": [],
+    "dailyFreeMintCap": 3,
+    "bawBin": "baw"
+  }
+}

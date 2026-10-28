@@ -1,53 +1,38 @@
-# 工作流 · 怎么做
+# 工作流 · 脚本主跑，AI 处理异常
 
-## 分工（历史 Grok Bot 会话约定）
+## 角色分工
 
-| 角色 | 做什么 | 不做什么 |
-|------|--------|----------|
-| **主盯盘 Agent**（原 Grok Bot；今晚起本地 Agent 接力） | 找线索、浅扫链上、写 SCAN、派活、汇总中文汇报、用户授权后执行 mint/登记 | 不擅自付费；不把未核验 CA 当可打 |
-| **X搜索小b** | 只搜 X：官帖/社区声称 CA、时间窗、入口链接；标题+链接+上海时间 | 不参与链上；不代打 |
-| **kimi小b** | 用 Kimi/CLI 深核：Sourcify、eth_call、入口 selector、费用档、门禁实测 → 写 `VERIFY-*.md` | 不自动 mint |
+| 角色 | 负责 | 不负责 |
+|------|------|--------|
+| 常驻 Node.js 服务 | 事件订阅、回补、去重、状态机、限额、通知、模拟和回执对账 | 不让模型参与每个事件的判断 |
+| AI / Kimi | 新 ABI 与源码核验、异常解释、X/项目资料收集、规则复盘 | 不直接改执行配置，不持有私钥，不自动连发交易 |
+| 用户 | 审核项目、规则、执行白名单和真实操作 | 不需要再依靠定时提示 AI 全市场扫描维持盯盘 |
 
-主 Agent **负责找线索并汇总汇报**；细则核验派 kimi 以省额度；打新预告线索可派 X 搜索。
+## 主链路
 
-## 端到端（一次 Mint 盯盘槽）
+1. Flap/Four/Gang 通过 WSS 接收事件，HTTP getLogs 按游标补漏；pipfun 使用低频公开快照。
+2. 读取真实区块时间，按 `txHash:logIndex` 去重；旧事件只建档。
+3. watcher 统一输出项目、CA、平台、报价币、进度、费用、门禁和事件时间。
+4. 规则引擎比较上次状态，决定静默、加热、通知或生成模拟策略卡。
+5. 无法闭合的事实进入 `data/ai-queue.jsonl`，主服务继续处理其他项目。
+6. 只有人工配置的免费 mint 项目才进入执行层；preview、执行和回执分开记录。
 
-```
-1. 读基线：上一份 SCAN + VERIFY + nft-inventory
-2. 浅扫：已知 CA eth_call（供应/开关/paused）+ 站/API（如 jager.live/api/stats）
-3. 搜线索：X 官号/聚合帖/项目站（或派 X搜索小b）
-4. 标记 softLeads / deepVerify 清单
-5. 若有实质变化 → 写 SCAN-YYYY-MM-DD-HHmm.md → 中文通知用户
-6. 派 kimi 深核（priority）→ 收 VERIFY → 再报「是否值得观察」定稿
-7. 用户说「打免费的」等明确授权 → 仅打授权范围 → 写回 inventory + tx 链接
-```
+## 已知 CA 适配
 
-曲线快盘（Flap）**单独槽**，见 MONITORING / ROUTINES；不要和慢盘 SCAN 混成一份硬结论。
+`config/projects.json` 保存已核验 ABI 和规则。新增项目先做：
 
-## 铁律
+- `eth_getCode`、Sourcify、官网/官 X 交叉核验；
+- 确认 SPACE Agent 门禁、入口 selector、价格、供应、每钱包额度；
+- 将只读字段加入 `reads`，将需要通知的字段加入 `watchKeys`；
+- 无法闭合时只进入 AI 异常队列，不猜 ABI，不自动执行。
 
-1. **Never auto trade / auto mint** — 没有用户当轮明确授权，只观察与汇报。
-2. **付费必报 ≈USD** — 用扫时 BNB 价粗算；写清 gas 另计。
-3. **免费优先** — 用户常说「免费的都打」；付费档另问。
-4. **中文汇报** — 短表 + 风险一句 + 是否值得观察。
-5. **substantialChange=false 可静默** — 仅缓增/已报过的不刷屏（见 MONITORING）。
-6. **CA 以链为准** — 社区声称必须 Sourcify / bytecode / 站内 JS 对账后再升格「值得」。
+## 真实 mint 流程
 
-## 产出命名（建议延续）
+1. `known-ca.preflight` 重新读取当前链上状态，不能使用数分钟前的缓存。
+2. 执行策略检查 `autoAllowed`、项目白名单、armed、value=0 和每日上限。
+3. BAW 检查登录、预期钱包、Developer Mode 和钱包锁。
+4. `contract-call preview` 无高危风险且不需要 App 确认后才允许 execute。
+5. 广播后等待实际回执；ERC-721 从零地址 `Transfer` 解析 Token ID，写 `data/receipts.jsonl`。
+6. 超时、`PENDING_CONFIRMATION` 和结果未知都禁止盲目重试，进入异常队列。
 
-- `/workspace/nft-check/SCAN-YYYY-MM-DD-HHmm.md` — 主 Agent 浅扫
-- `/workspace/nft-check/VERIFY-YYYY-MM-DD-HHmm.md` — kimi 深核
-- `/workspace/nft-check/FLAP-PORTAL-SCAN-YYYY-MM-DD.md` — 曲线轻扫（脚本写出）
-- `/workspace/nft-inventory.md` — 本钱包持仓唯一清单
-
-本地 Agent 若路径不同，保持**同一命名约定**，并在交接笔记里写清根目录。
-
-## 执行 mint 时（授权后）
-
-1. 复扫：`mintOpen` / `paused` / `hasMinted` / `priceFor` / 剩余供应
-2. 用 SPACE 钱包（handle `renee`）调用正确 selector（见 VERIFY）
-3. value 精确匹配（BOO 等要求精确 `priceFor`，多付会 revert）
-4. 等收据 → 记 Token ID → 追加 `nft-inventory.md` 变更日志
-5. 回用户：项目、Token ID、花费（0 + gas 或 BNB≈$）、tx 链接
-
-工具习惯（原会话）：BSC 上多用 **`baw` CLI**（`wallet` / `contract-call` preview→execute）；只读可用 public RPC + `cast`/`ethers` 脚本。
+付费 mint、swap 和卖出沿用人工单独授权，不从“免费 mint 已授权”推导。
