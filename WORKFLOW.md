@@ -10,7 +10,7 @@
 
 ## 主链路
 
-1. Flap/Four/Gang 通过 WSS 接收事件，HTTP getLogs 按游标补漏；pipfun 使用低频公开快照。
+1. Flap/Four/Gang 通过 WSS 接收事件，HTTP getLogs 按游标补漏；Gang 再按 Flap 的方式回读曲线进度、毕业和押金。pipfun 使用低频公开快照。
 2. 读取真实区块时间，按 `txHash:logIndex` 去重；旧事件只建档。
 3. watcher 统一输出项目、CA、平台、报价币、进度、费用、门禁和事件时间。
 4. 规则引擎比较上次状态，决定静默、加热、通知或生成模拟策略卡。

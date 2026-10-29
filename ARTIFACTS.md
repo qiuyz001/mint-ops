@@ -27,4 +27,5 @@
 | 文件 | 用法 |
 |------|------|
 | `flap-portal-scan.mjs` | `node flap-portal-scan.mjs [hours]` 需 ethers；写出到 `/workspace/nft-check/`（可改 outPath） |
+| `gang-scan.mjs` | `node scripts/gang-scan.mjs [hours]` 只读 Gang 曲线进度，JSON 打到 stdout |
 | `jager-status.mjs` | 示例探针；内嵌 CA 可能是**旧 mint**，用前改成当前 CA |

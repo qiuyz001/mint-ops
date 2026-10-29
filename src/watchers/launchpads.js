@@ -1,26 +1,13 @@
 import { ethers } from 'ethers';
+import { classifyGangLog, gangDefinition, gangEventFields, gangEvents, gangReadHint, GANG_COVERAGE, GANG_FOLLOW_RULES, readGangMarket } from './gang.js';
 
 const FOUR_MANAGER = '0x5c952063c7fc8610FFDB798152D69F0B9550762b';
 const FOUR_TOPIC = ethers.id('TokenCreate(address,address,uint256,string,string,uint256,uint256,uint256)');
-const GANG_OLD = '0x315Ba2e8952D06094CC636b2B84229FA32fb23A7';
-const GANG_V2 = '0x1B8F3f69DFa0a7F63d308C7EB0Fd38D8b099966E';
-const GANG_OLD_TOPIC = '0xe57a519fe6a031fac5d360f4b8ce246c86dd280b40dc37b68c0a7cc7394ef9c0';
-const GANG_V2_TOPIC = '0xd23a447045c377a966a79f59983bae21db7b92fead61df8ace4aea5628043791';
 const fourIface = new ethers.Interface(['event TokenCreate(address creator,address token,uint256 requestId,string name,string symbol,uint256 totalSupply,uint256 launchTime,uint256 launchFee)']);
-const coder = ethers.AbiCoder.defaultAbiCoder();
-const addr = (topic) => ethers.getAddress(`0x${topic.slice(26)}`).toLowerCase();
-const QUOTES = new Map([
-  ['0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c', 'BNB'],
-  ['0x0000000000000000000000000000000000000000', 'BNB'],
-  ['0x0c6302401aa5325c2e36f170f52c00b1d220b405', 'GANG'],
-  ['0x4902c5ebc598265ed2212b559b042de8a5eeec3f', 'BNCB'],
-  ['0x21caef8a43163eea865baee23b9c2e327696a3bf', 'XAUT'],
-  ['0x5ce033b2bfca3af30b3e8c8457deaf776a8b695a', 'BEM'],
-]);
 
 const DEFINITIONS = [
   { id: 'four', platform: 'four', address: [FOUR_MANAGER], topics: [[FOUR_TOPIC]] },
-  { id: 'gang', platform: 'gang', address: [GANG_OLD, GANG_V2], topics: [[GANG_OLD_TOPIC, GANG_V2_TOPIC]] },
+  gangDefinition(),
 ];
 
 export class LaunchpadWatcher {
@@ -48,13 +35,43 @@ export class LaunchpadWatcher {
       } catch (error) { await this.error(def.id, error); }
     }
     if (this.config.intervals.pipfunSec > 0) this.pipfunLoop();
+    this.refreshLoop();
+  }
+
+  async once(hours = 0) {
+    this.gangRows = [];
+    this.gangQuiet = 0;
+    const tip = await this.rpc.blockNumber();
+    const span = hours > 0 ? Math.max(1, Math.floor(hours * 8000)) : this.config.rpc.backfillBlocks;
+    const from = Math.max(0, tip - span);
+    const def = DEFINITIONS.find((item) => item.id === 'gang');
+    await this.scan(def, from, tip);
+    await this.refreshGang({ force: true });
+    return {
+      fromBlock: from,
+      toBlock: tip,
+      substantial: this.gangRows,
+      quiet: this.gangQuiet,
+      thresholds: this.config.thresholds,
+      followRules: GANG_FOLLOW_RULES,
+      armed: false,
+      autoTrade: false,
+      coverage: GANG_COVERAGE,
+    };
   }
 
   async scan(def, fromBlock, toBlock) {
     if (fromBlock > toBlock) return;
-    const logs = await this.rpc.logs({ address: def.address, topics: def.topics, fromBlock, toBlock });
-    logs.sort((a, b) => a.blockNumber - b.blockNumber || a.index - b.index);
-    for (const log of logs) await this.handle(def, log);
+    const windowSec = Math.max(this.config.strategy.maxNewTokenAgeSec, toBlock - fromBlock + 1);
+    const previousWindow = this.scanWindowSec;
+    if (def.platform === 'gang') this.scanWindowSec = windowSec;
+    try {
+      const logs = await this.rpc.logs({ address: def.address, topics: def.topics, fromBlock, toBlock, step: def.logStep });
+      logs.sort((a, b) => a.blockNumber - b.blockNumber || a.index - b.index);
+      for (const log of logs) await this.handle(def, log);
+    } finally {
+      this.scanWindowSec = previousWindow;
+    }
     this.store.state.cursors[`launch:${def.id}`] = toBlock;
     this.store.save();
   }
@@ -65,24 +82,92 @@ export class LaunchpadWatcher {
     const block = await this.rpc.block(log.blockNumber);
     if (!block) throw new Error(`无法读取区块 ${log.blockNumber}`);
     let event;
-    if (def.id === 'four') {
-      const parsed = fourIface.parseLog({ topics: log.topics, data: log.data });
-      if (!parsed) return;
-      const a = parsed.args;
-      event = { token: a.token.toLowerCase(), creator: a.creator.toLowerCase(), name: a.name, symbol: a.symbol, platform: 'four', quote: 'BNB' };
-    } else {
-      const v2 = log.topics[0] === GANG_V2_TOPIC;
-      const [name, symbol] = v2 ? coder.decode(['string', 'string', 'string'], log.data) : coder.decode(['string', 'string'], log.data);
-      const quoteAddress = v2 ? addr(log.topics[3]) : null;
-      event = {
-        token: addr(log.topics[1]), creator: addr(log.topics[2]), name, symbol,
-        platform: 'gang', quote: quoteAddress ? (QUOTES.get(quoteAddress) || 'UNKNOWN') : 'BNB', quoteAddress,
-      };
+    if (def.platform === 'gang') {
+      await this.handleGang(log, id, block);
+      return;
     }
+    const parsed = fourIface.parseLog({ topics: log.topics, data: log.data });
+    if (!parsed) return;
+    const a = parsed.args;
+    event = { token: a.token.toLowerCase(), creator: a.creator.toLowerCase(), name: a.name, symbol: a.symbol, platform: 'four', quote: 'BNB' };
     Object.assign(event, { blockNumber: log.blockNumber, blockTime: Number(block.timestamp), seenAt: Date.now(), txHash: log.transactionHash });
     this.store.markEvent(id);
     await this.rules.launchpad(event, { eventId: id });
     this.store.save();
+  }
+
+  async handleGang(log, id, block) {
+    const kind = classifyGangLog(log);
+    let parsed = null;
+    try { parsed = gangEvents.parseLog({ topics: log.topics, data: log.data }); } catch { parsed = null; }
+    if (!kind || !parsed?.args?.token) {
+      this.store.markEvent(id);
+      return;
+    }
+    const seenAt = Date.now();
+    const fields = gangEventFields(parsed, kind);
+    const market = await readGangMarket(this.rpc, fields.token, kind.factory);
+    const current = {
+      ...fields,
+      ...(market || {}),
+      token: fields.token,
+      platform: 'gang',
+      blockNumber: log.blockNumber,
+      blockTime: Number(block.timestamp),
+      seenAt,
+      txHash: log.transactionHash,
+    };
+    if (fields.justGraduated) {
+      current.graduated = true;
+      current.justGraduated = true;
+      if (current.progressPct == null) current.progressPct = 100;
+    }
+    if (fields.bondJustPosted) {
+      current.bondJustPosted = true;
+      current.bondExists = true;
+    }
+    if (fields.name) current.name = fields.name;
+    if (fields.symbol) current.symbol = fields.symbol;
+    this.store.markEvent(id, seenAt);
+    const result = await this.rules.gang(current, { isNew: kind.event === 'created', eventId: id, windowSec: this.scanWindowSec || 0 });
+    this.noteGang(result);
+    this.store.save();
+  }
+
+  async refreshLoop() {
+    while (this.running) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!this.running) break;
+      try { await this.refreshGang(); }
+      catch (error) { await this.error('gang-refresh', error); }
+    }
+  }
+
+  async refreshGang({ force = false } = {}) {
+    const now = Date.now();
+    for (const token of Object.values(this.store.state.tokens)) {
+      if (token.platform !== 'gang' || token.status === 4 || token.status === 3) continue;
+      if (!force && (token.nextCheckAt || 0) > now) continue;
+      if (force && token.updatedAt && now - token.updatedAt < 5000) continue;
+      try {
+        const latest = await readGangMarket(this.rpc, token.token, gangReadHint(token));
+        if (!latest?.kind && latest?.source !== 'gang.fun') {
+          await this.error(`gang-state:${token.token}`, new Error(latest?.readError || '曲线读取为空'));
+          continue;
+        }
+        const result = await this.rules.gang({ ...token, ...latest, seenAt: now }, { windowSec: this.scanWindowSec || 0 });
+        this.noteGang(result);
+      } catch (error) {
+        await this.error(`gang-state:${token.token}`, error);
+      }
+    }
+    this.store.save();
+  }
+
+  noteGang(result) {
+    if (!result) return;
+    if (result.substantial && Array.isArray(this.gangRows)) this.gangRows.push(result.row);
+    else if (!result.substantial && this.gangQuiet != null) this.gangQuiet += 1;
   }
 
   async backfillLoop(def) {

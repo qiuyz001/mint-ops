@@ -10,7 +10,7 @@ export class Notifier {
 
   async event(type, payload, { substantial = false, reason = '' } = {}) {
     const row = this.store.record(type, payload, substantial, reason);
-    if (substantial) {
+    if (substantial && this.config.silentConsole !== true) {
       const name = cleanText(payload.name || payload.symbol || payload.project || type);
       const address = cleanText(payload.token || payload.address || '');
       console.log(`[变化] ${name} ${address} · ${cleanText(reason)}`);
@@ -21,7 +21,7 @@ export class Notifier {
 
   async anomaly(kind, payload) {
     const row = this.store.queueAi(kind, payload);
-    console.log(`[AI异常队列] ${cleanText(kind)} · ${cleanText(row.summary)}`);
+    if (this.config.silentConsole !== true) console.log(`[AI异常队列] ${cleanText(kind)} · ${cleanText(row.summary)}`);
     return row;
   }
 

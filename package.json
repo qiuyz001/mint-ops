@@ -12,8 +12,9 @@
     "observe": "node scripts/mint-ops.mjs observe",
     "dry-run": "node scripts/mint-ops.mjs dry-run",
     "once": "node scripts/mint-ops.mjs once",
+    "gang-scan": "node scripts/gang-scan.mjs",
     "status": "node scripts/mint-ops.mjs status",
-    "check": "node --check scripts/mint-ops.mjs && node --check src/index.js"
+    "check": "node --check scripts/mint-ops.mjs && node --check scripts/gang-scan.mjs && node --check src/index.js && node --check src/rules.js && node --check src/watchers/gang.js && node --check src/watchers/launchpads.js"
   },
   "dependencies": {
     "ethers": "6.17.0",

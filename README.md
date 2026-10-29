@@ -29,6 +29,7 @@ BSC WSS / getLogs / 项目 API
 ```bash
 npm ci
 npm run once -- 0.01       # 扫描约 0.01 小时的区块，并读取已知项目
+npm run gang-scan -- 0.05  # 只读 Gang 曲线进度；不开启交易
 npm run observe            # 常驻观察；无真实执行
 npm run status             # 本地游标与状态摘要
 ```
@@ -37,8 +38,13 @@ npm run status             # 本地游标与状态摘要
 
 ```bash
 node scripts/flap-portal-scan.mjs 0.01
+node scripts/gang-scan.mjs 0.05
 node scripts/jager-status.mjs
 ```
+
+`gang-scan` 和 `npm run once` 都会把 `execution.armed` 置回 `false`。stdout 是一段 JSON：`report` 为 Asia/Shanghai 时间的短报，`substantial` 只含新盘、进度跨过 `config.thresholds`（默认 70/90/95/100）、新押金、毕业或打新启动。日常慢涨不进这条列表。
+
+只读线索（不是买卖建议）：未结束且进度 ≥90 值得盯；≥70 可跟进度；有有效押金但进度 <70 为弱跟；已毕业/打新已启动，或未过 70 且无押金，则不跟内盘。
 
 所有运行数据写入项目内 `data/`，已被 git 忽略。可用 `MINT_OPS_DATA_DIR` 改到其他本地目录。
 

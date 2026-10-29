@@ -6,6 +6,7 @@ import { Rules } from './rules.js';
 import { FlapWatcher } from './watchers/flap.js';
 import { KnownCaWatcher } from './watchers/known-ca.js';
 import { LaunchpadWatcher } from './watchers/launchpads.js';
+import { formatGangReport, GANG_FOLLOW_RULES, shanghaiNow } from './watchers/gang.js';
 import { BawExecutor } from './execution/baw.js';
 
 export function createRuntime(overrides = {}) {
@@ -22,7 +23,7 @@ export function createRuntime(overrides = {}) {
   return { config, store, rpc, notifier, rules, knownWatcher, execution, flap, launchpads };
 }
 
-export async function runOnce({ hours = 0, includeKnown = true, includePipfun = true } = {}) {
+export async function runOnce({ hours = 0, includeKnown = true, includePipfun = true, includeGang = true } = {}) {
   const runtime = createRuntime({ mode: 'once' });
   runtime.config.execution.armed = false;
   const flap = await runtime.flap.once(hours);
@@ -32,8 +33,35 @@ export async function runOnce({ hours = 0, includeKnown = true, includePipfun = 
     try { pipfun = await runtime.launchpads.refreshPipfun(); }
     catch (error) { await runtime.rules.anomalyOnce('pipfun:once', 'pipfun_snapshot_failed', { summary: 'pipfun 快照失败', evidence: { error: error.message } }); }
   }
+  let gang = null;
+  if (includeGang) {
+    try { gang = await runtime.launchpads.once(hours); }
+    catch (error) { await runtime.rules.anomalyOnce('gang:once', 'gang_scan_failed', { summary: 'Gang 曲线扫描失败', evidence: { error: error.message } }); gang = { error: error.message, substantial: [], armed: false, autoTrade: false }; }
+  }
   runtime.store.save();
-  return { mode: 'once', flap, knownProjects: known.length, pipfun, rpc: runtime.rpc.metrics, state: runtime.store.summary() };
+  return { mode: 'once', armed: false, flap, knownProjects: known.length, pipfun, gang, rpc: runtime.rpc.metrics, state: runtime.store.summary() };
+}
+
+export async function runGangScan({ hours = 0 } = {}) {
+  const runtime = createRuntime({ mode: 'gang-scan' });
+  runtime.config.execution.armed = false;
+  runtime.config.silentConsole = true;
+  const gang = await runtime.launchpads.once(hours);
+  runtime.store.save();
+  const at = shanghaiNow();
+  const report = formatGangReport({ at, ...gang });
+  return {
+    at,
+    timezone: 'Asia/Shanghai',
+    armed: runtime.config.execution.armed,
+    autoTrade: false,
+    mode: 'read-only',
+    followRules: GANG_FOLLOW_RULES,
+    report,
+    ...gang,
+    rpc: runtime.rpc.metrics,
+    state: runtime.store.summary(),
+  };
 }
 
 export async function runService({ dryRun = true } = {}) {

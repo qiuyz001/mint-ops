@@ -15,6 +15,23 @@
 - 脚本：`scripts/flap-portal-scan.mjs`
 - 兼扫 pipfun 公开 `/v1` 类快照（脚本内；失败则报告 error 一句）
 
+## Gang（只读）
+
+2026-10-29 用 BSC `eth_getCode` / `getLogs` / `curves` / `kindOf` / `sales` / `bondOf` 对过。进度优先读链，链上读不到再用 `https://gang.fun/api`（可用 `GANG_API` 改）。
+
+| 角色 | 地址 | 扫描 |
+|------|------|------|
+| 旧 BNB 曲线（仓库原 `GANG_OLD`） | `0x315Ba2e8952D06094CC636b2B84229FA32fb23A7` | 是。毕业 20 BNB |
+| LaunchpadV2（仓库原 `GANG_V2`） | `0x1B8F3f69DFa0a7F63d308C7EB0Fd38D8b099966E` | 是。话题与原常量一致 |
+| LaunchpadU | `0xF81C4E51c48466c6025B0165b1Ea0F6978c712cb` | 是。创建话题与 V2 相同，官方已停新创建 |
+| LaunchpadS | `0x60aee38576035E757deD30fF8db8A8DA476430C1` | 是。曲线没有 `taxed` 字段 |
+| GangLaunchpad（V3 曲线 + 打新） | `0x15CFD2dc8278Fb87a1783ef42111618E20874365` | 是。两条 `Created` 都在真实交易里对过 |
+| GangBond | `0xe92dC940CB23Dc328639A7334e69F9CCdf3a14E4` | 是。只读 `bondOf` / `BondPosted` |
+
+不扫：CLI 里的 soft `0x4E6f13c8A453c1b8b4E20b590082bb233a5b80d7`（有字节码，`tokenCount=0`，现行 BNB 曲线在 `GANG_OLD`）；已弃用的第一版 GangBond `0xf26F33432E33FcE615abf3801ca0c91D1C62C817`（官方记录部署后无押金事件）。
+
+脚本：`scripts/gang-scan.mjs`。不自动买入、卖出或参加打新。
+
 ## 项目站 / API（示例）
 
 | 项目 | 入口 |

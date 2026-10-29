@@ -4,7 +4,7 @@ import { runOnce } from '../src/index.js';
 
 const hours = Number(process.argv[2]) > 0 ? Number(process.argv[2]) : 0;
 try {
-  const result = await runOnce({ hours, includeKnown: false, includePipfun: false });
+  const result = await runOnce({ hours, includeKnown: false, includePipfun: false, includeGang: false });
   console.log(JSON.stringify(result, null, 2));
 } catch (error) {
   console.error(error.message);
