@@ -36,9 +36,10 @@ npm run status             # 本地游标与状态摘要
 ## Gang 曲线轻扫（只读）
 
 `npm run gang-scan -- 0.01` 扫描 OLD/V2/V3/fair 创建事件并刷新在途盘，输出 Asia/Shanghai JSON；无在途盘时 `items=[]`。
+第二个位置参数可覆盖本次扫描的 `logStep`（正整数），公网 RPC 推荐 `npm run gang-scan -- 2 2000`；省略时沿用 `config/default.json` 的 `rpc.logStep=50`，报告 JSON 的 `logStep` 为实际使用值。
 进度优先读 pad/registry/bond view，失败才降级 `https://gang.fun/api`；新盘、70/90/95/100 阈值、新押金和毕业为 substantial。
 `npm run once -- 0.01` 也会顺带执行 Gang 刷新；验收运行 `npm run check` 与上述干跑。
-全程只读，不发送交易，`config/default.json` 的 `execution.armed` 保持 `false`。
+全程只读，入口强制 `armed=false`，不发送交易，`config/default.json` 的 `execution.armed` 保持 `false`。
 
 兼容原入口：
 
