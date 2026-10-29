@@ -33,6 +33,13 @@ npm run observe            # 常驻观察；无真实执行
 npm run status             # 本地游标与状态摘要
 ```
 
+## Gang 曲线轻扫（只读）
+
+`npm run gang-scan -- 0.01` 扫描 OLD/V2/V3/fair 创建事件并刷新在途盘，输出 Asia/Shanghai JSON；无在途盘时 `items=[]`。
+进度优先读 pad/registry/bond view，失败才降级 `https://gang.fun/api`；新盘、70/90/95/100 阈值、新押金和毕业为 substantial。
+`npm run once -- 0.01` 也会顺带执行 Gang 刷新；验收运行 `npm run check` 与上述干跑。
+全程只读，不发送交易，`config/default.json` 的 `execution.armed` 保持 `false`。
+
 兼容原入口：
 
 ```bash

@@ -26,6 +26,7 @@ export async function runOnce({ hours = 0, includeKnown = true, includePipfun = 
   const runtime = createRuntime({ mode: 'once' });
   runtime.config.execution.armed = false;
   const flap = await runtime.flap.once(hours);
+  const gang = await runtime.launchpads.once(hours);
   const known = includeKnown ? await runtime.knownWatcher.once() : [];
   let pipfun = null;
   if (includePipfun) {
@@ -33,7 +34,7 @@ export async function runOnce({ hours = 0, includeKnown = true, includePipfun = 
     catch (error) { await runtime.rules.anomalyOnce('pipfun:once', 'pipfun_snapshot_failed', { summary: 'pipfun 快照失败', evidence: { error: error.message } }); }
   }
   runtime.store.save();
-  return { mode: 'once', flap, knownProjects: known.length, pipfun, rpc: runtime.rpc.metrics, state: runtime.store.summary() };
+  return { mode: 'once', flap, gang, knownProjects: known.length, pipfun, rpc: runtime.rpc.metrics, state: runtime.store.summary() };
 }
 
 export async function runService({ dryRun = true } = {}) {
