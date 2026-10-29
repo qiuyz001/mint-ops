@@ -1,4 +1,5 @@
 import { buildStrategyCard } from './strategy.js';
+import { gangFollowClue } from './watchers/gang.js';
 
 const ZERO32 = `0x${'0'.repeat(64)}`;
 const hasExtension = (id) => id && id.toLowerCase() !== ZERO32;
@@ -66,6 +67,64 @@ export class Rules {
       isHistorical: !fresh,
     }, { substantial: fresh && card.eligible, reason: fresh && card.eligible ? '新鲜新盘通过本地模拟条件，未下单' : '只建档或条件不满足' });
     return card;
+  }
+
+  async gang(current, { isNew = false, eventId = null, windowSec = 0 } = {}) {
+    const previous = this.store.token(current.token);
+    const now = Date.now();
+    const ageSec = current.blockTime ? Math.max(0, now / 1000 - current.blockTime) : null;
+    const allowedAge = Math.max(this.config.strategy.maxNewTokenAgeSec, windowSec || 0);
+    const inWindow = ageSec != null && ageSec <= allowedAge;
+    const changes = [];
+    if (isNew && !previous && inWindow) changes.push('新盘');
+    const done = Boolean(current.graduated);
+    const newProgress = typeof current.progressPct === 'number' && Number.isFinite(current.progressPct) ? current.progressPct : null;
+    const oldProgress = typeof previous?.progressPct === 'number' ? previous.progressPct : null;
+    if (newProgress != null && (oldProgress != null || (isNew && !previous && inWindow))) {
+      const base = oldProgress ?? 0;
+      const crossed = this.config.thresholds.filter((threshold) => base < threshold && newProgress >= threshold);
+      if (crossed.length) changes.push(`进度跨过 ${crossed.join('/')}%，当前 ${newProgress.toFixed(2)}%`);
+    }
+    if (done && previous?.graduated !== true && (previous || current.justGraduated || (isNew && inWindow))) {
+      changes.push(current.kind === 'fair' ? '打新启动' : '毕业');
+    }
+    if (current.bondExists === true && previous?.bondExists !== true && (current.bondJustPosted || (isNew && inWindow) || previous?.bondExists === false)) {
+      changes.push('新押金');
+    }
+    const substantial = changes.length > 0;
+    const status = done ? 4 : 1;
+    const stored = { ...previous, ...current, status, graduated: done, progressPct: newProgress ?? previous?.progressPct ?? null, updatedAt: now };
+    delete stored.justGraduated;
+    delete stored.bondJustPosted;
+    stored.nextCheckAt = this.nextCheck(stored, now);
+    this.store.setToken(current.token, stored);
+    const isNewMarket = changes.includes('新盘');
+    const clue = gangFollowClue({ ...stored, isNew: isNewMarket });
+    if (isNewMarket) {
+      const card = buildStrategyCard({ ...stored, seenAt: current.seenAt || now }, this.config);
+      await this.notifier.event('strategy_card', card, { reason: card.reasons.join('；') });
+    }
+    const row = {
+      token: stored.token,
+      name: stored.name || stored.symbol || null,
+      symbol: stored.symbol || null,
+      kind: stored.kind || null,
+      factory: stored.factory || null,
+      quote: stored.quote || null,
+      progressPct: stored.progressPct,
+      graduated: done,
+      bond: stored.bondExists ?? null,
+      bondAmountQuote: stored.bondAmountQuote ?? null,
+      raisedQuote: stored.raisedQuote ?? null,
+      fdvQuote: stored.fdvQuote ?? null,
+      source: stored.source || null,
+      clue: clue.clue,
+      worthFollow: clue.worthFollow,
+      reasons: changes,
+      eventId,
+    };
+    await this.notifier.event('gang_state', row, { substantial, reason: changes.join('；') || '常规状态记录' });
+    return { substantial, changes, row };
   }
 
   async known(project, current) {

@@ -35,11 +35,11 @@ export class RpcManager {
   block(number) { return this.call((provider) => provider.getBlock(number)); }
   code(address) { return this.call((provider) => provider.getCode(address)); }
 
-  async logs({ address, topics, fromBlock, toBlock }) {
+  async logs({ address, topics, fromBlock, toBlock, step }) {
     const output = [];
-    const step = this.config.rpc.logStep;
-    for (let start = fromBlock; start <= toBlock; start += step) {
-      const end = Math.min(start + step - 1, toBlock);
+    const size = Math.max(1, step || this.config.rpc.logStep);
+    for (let start = fromBlock; start <= toBlock; start += size) {
+      const end = Math.min(start + size - 1, toBlock);
       const logs = await this.call((provider) => provider.getLogs({ address, topics, fromBlock: start, toBlock: end }));
       output.push(...logs);
     }

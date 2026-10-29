@@ -24,13 +24,14 @@ Flap 使用 `NEW → WATCH → HOT → DEX/DONE`：
 - 新硬 CA 或新 LIVE 且规则可核；
 - `paused`、`mintOpen`、`openedAt`、`pair`、`extensionID`、费用或 selector 变化；
 - 首次跨过配置的 70/90/95/100% 阈值；
+- Gang 新盘、曲线进度跨过上述阈值、新的有效押金、毕业或打新启动；
 - 新盘带 extension，需进一步核对 Agent Curve 映射；
 - 执行需要 App 确认、结果未知、未知 revert 或数据源持续冲突。
 
 以下情况只写事件日志：
 
 - 重复的 `txHash:logIndex`；
-- 缓增但没有跨阈值；
+- 缓增但没有跨阈值（Gang 内盘慢涨同样只写日志）；
 - 已参与、已售罄或已通知的同一状态；
 - 无 extension 的普通 meme；
 - 超过新盘年龄窗口的历史回补。

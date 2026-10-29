@@ -12,6 +12,7 @@
 
 - [ ] `npm run check` 通过。
 - [ ] `npm run once -- 0.001` 能读取真实 Flap 日志、已知项目和 pipfun 快照。
+- [ ] `npm run gang-scan -- 0.05` 输出 JSON，`armed` 为 false，且没有买卖交易。
 - [ ] 再跑一次，已处理的 `txHash:logIndex` 不重复触发。
 - [ ] `npm run observe` 能启动 WSS 和回补，Ctrl+C 后保存游标。
 - [ ] `node scripts/mint-ops.mjs mint boo` 在免费额度已用时于 BAW 之前停止。
