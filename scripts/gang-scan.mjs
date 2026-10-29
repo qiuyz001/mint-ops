@@ -6,10 +6,14 @@ import {
 } from '../src/watchers/launchpads.js';
 
 const hours = Number(process.argv[2] || 0);
-if (!Number.isFinite(hours) || hours < 0) throw new Error('用法：node scripts/gang-scan.mjs [hours>=0]');
+const logStep = process.argv[3] === undefined ? undefined : Number(process.argv[3]);
+if (!Number.isFinite(hours) || hours < 0 || (logStep !== undefined && (!Number.isInteger(logStep) || logStep < 1))) {
+  throw new Error('用法：node scripts/gang-scan.mjs [hours>=0] [logStep>=1 整数]');
+}
 
 const runtime = createRuntime({ mode: 'gang-scan' });
 runtime.config.execution.armed = false;
+if (logStep !== undefined) runtime.config.rpc.logStep = logStep;
 const result = await runtime.launchpads.once(hours);
 const report = {
   success: true,
@@ -21,6 +25,7 @@ const report = {
   readOnly: true,
   armed: runtime.config.execution.armed,
   hours,
+  logStep: runtime.config.rpc.logStep,
   factories: [
     { id: 'old', address: GANG_OLD, topic: GANG_OLD_TOPIC },
     { id: 'v2', address: GANG_V2, topic: GANG_V2_TOPIC },
