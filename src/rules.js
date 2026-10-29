@@ -55,12 +55,12 @@ export class Rules {
     const now = Date.now();
     const fresh = current.blockTime && now / 1000 - current.blockTime <= this.config.strategy.maxNewTokenAgeSec;
     const changes = [];
-    if (isNew) changes.push(`Gang ${current.platformVersion || 'unknown'} 新盘`);
+    if (isNew && fresh) changes.push(`Gang ${current.platformVersion || 'unknown'} 新盘`);
     const oldProgress = previous?.progressPct ?? 0;
     const newProgress = current.progressPct ?? 0;
-    const crossed = this.config.thresholds.filter((x) => oldProgress < x && newProgress >= x);
+    const crossed = previous ? this.config.thresholds.filter((x) => oldProgress < x && newProgress >= x) : [];
     if (crossed.length) changes.push(`进度跨过 ${crossed.join('/')}%，当前 ${newProgress.toFixed(2)}%`);
-    if (current.hasBond && !previous?.hasBond) changes.push(`新增押金 ${current.bondAmount ?? 'unknown'} ${current.quote || ''}`.trim());
+    if (previous && current.hasBond && !previous.hasBond) changes.push(`新增押金 ${current.bondAmount ?? 'unknown'} ${current.quote || ''}`.trim());
     if (current.graduated && previous && !previous.graduated) changes.push('已毕业并进入 DEX');
     const substantial = changes.length > 0;
     const next = {

@@ -7,7 +7,7 @@ export const GANG_OLD = '0x315Ba2e8952D06094CC636b2B84229FA32fb23A7';
 export const GANG_V2 = '0x1B8F3f69DFa0a7F63d308C7EB0Fd38D8b099966E';
 export const GANG_V3 = '0x15CFD2dc8278Fb87a1783ef42111618E20874365';
 export const GANG_REGISTRY = '0x4fF77D4d9ac080939a24E1B805206bA094C44e5C';
-export const GANG_BOND = '0xe92dc940cb23dc328639a7334e69f9ccdf3a14e4';
+export const GANG_BOND = '0xe92dC940CB23Dc328639A7334e69F9CCdf3a14E4';
 export const GANG_OLD_TOPIC = '0xe57a519fe6a031fac5d360f4b8ce246c86dd280b40dc37b68c0a7cc7394ef9c0';
 export const GANG_V2_TOPIC = '0xd23a447045c377a966a79f59983bae21db7b92fead61df8ace4aea5628043791';
 export const GANG_V3_TOPIC = ethers.id('Created(address,address,string,string,string,address,address,uint256)');
@@ -41,7 +41,7 @@ const QUOTES = new Map([
   ['0x5ce033b2bfca3af30b3e8c8457deaf776a8b695a', 'BEM'],
 ]);
 const quoteName = (address, fallback = null) => address ? (QUOTES.get(address.toLowerCase()) || fallback || address.toLowerCase()) : 'BNB';
-const pairOrNull = (address) => address && address.toLowerCase() !== ZERO_ADDRESS ? address : null;
+const pairOrNull = (address) => address && address.toLowerCase() !== ZERO_ADDRESS ? address.toLowerCase() : null;
 const progressPct = (part, total, graduated) => graduated ? 100 : total > 0n ? Number((part * 1_000_000n) / total) / 10_000 : 0;
 
 const DEFINITIONS = [
@@ -63,7 +63,7 @@ export class LaunchpadWatcher {
       try {
         const tip = await this.rpc.blockNumber();
         const cursorKey = `launch:${def.id}`;
-        const from = Math.max(0, (this.store.state.cursors[cursorKey] ?? tip - this.config.rpc.backfillBlocks) + 1);
+        const from = Math.max(def.id === 'gang-v3' ? GANG_FACTORY_BLOCK : 0, (this.store.state.cursors[cursorKey] ?? tip - this.config.rpc.backfillBlocks) + 1);
         await this.scan(def, from, tip);
         this.sockets.push(this.rpc.watchLogs({ address: def.address, topics: def.topics },
           (log) => this.handle(def, log).catch((error) => this.error(def.id, error)),
@@ -84,8 +84,9 @@ export class LaunchpadWatcher {
     const from = Math.max(0, tip - span);
     const scans = [];
     for (const def of DEFINITIONS.filter((x) => x.id.startsWith('gang'))) {
-      await this.scan(def, from, tip);
-      scans.push({ factory: def.id, fromBlock: from, toBlock: tip });
+      const scanFrom = Math.max(def.id === 'gang-v3' ? GANG_FACTORY_BLOCK : 0, from);
+      await this.scan(def, scanFrom, tip);
+      scans.push({ factory: def.id, fromBlock: scanFrom, toBlock: tip });
     }
     const progress = await this.refreshGang({ force: true });
     return { fromBlock: from, toBlock: tip, scans, progress };
@@ -244,14 +245,16 @@ export class LaunchpadWatcher {
         const [s, bond] = await Promise.all([pad.sales(address), bondContract.bondOf(address)]);
         const graduated = Boolean(s.launched);
         const sold = BigInt(s.sold);
-        const target = BigInt(s.sharePrice) * 10_000n;
+        const capShares = BigInt(s.capShares);
+        if (capShares <= 0n) throw new Error('Fair sales 返回无效 capShares');
+        const target = BigInt(s.sharePrice) * capShares;
         const quoteAddress = s.quote.toLowerCase();
         return {
           token: address.toLowerCase(), platform: 'gang', platformVersion: 'fair', creator: s.creator.toLowerCase(),
-          progressPct: progressPct(sold, 10_000n, graduated), graduated, status: graduated ? 4 : 1,
+          progressPct: progressPct(sold, capShares, graduated), graduated, status: graduated ? 4 : 1,
           statusName: graduated ? 'DEX' : 'MINTING', quote: quoteName(quoteAddress), quoteAddress,
           pair: pairOrNull(s.pair), raised: (graduated ? target : sold * BigInt(s.sharePrice)).toString(),
-          graduationTarget: target.toString(), soldShares: Number(sold), totalShares: 10_000,
+          graduationTarget: target.toString(), soldShares: Number(sold), totalShares: Number(capShares),
           sharePrice: s.sharePrice.toString(), ...this.normalizeBond(bond), source: 'chain',
         };
       }
@@ -288,9 +291,9 @@ export class LaunchpadWatcher {
     const graduated = Boolean(body.graduated || body.launched || body.status === 'launched');
     const decimals = Number(body.quoteDecimals ?? 18);
     const raw = (value) => ethers.parseUnits(String(value ?? '0'), decimals).toString();
-    const target = version === 'old' ? ethers.parseEther('20').toString()
-      : body.raiseQuote != null ? String(body.raiseQuote)
-        : body.gradAmt != null ? String(body.gradAmt) : raw(body.gradAmtQuote);
+    const target = body.raiseQuote != null ? String(body.raiseQuote)
+      : body.gradAmt != null ? String(body.gradAmt)
+        : body.gradAmtQuote != null ? raw(body.gradAmtQuote) : null;
     const raised = version === 'fair' && body.sold != null && body.sharePrice != null
       ? (BigInt(body.sold) * BigInt(body.sharePrice)).toString() : raw(body.raisedQuote ?? body.raisedBnb);
     const progress = Number(body.progressPct ?? (version === 'fair' ? Number(body.sold || 0) / 100 : 0));
@@ -301,7 +304,7 @@ export class LaunchpadWatcher {
       creator: body.creator?.toLowerCase(), progressPct: progress, graduated, status: graduated ? 4 : 1,
       statusName: graduated ? 'DEX' : version === 'fair' ? 'MINTING' : 'CURVE',
       quote: quoteName(body.quoteAddress, body.quoteSymbol), quoteAddress: body.quoteAddress?.toLowerCase() || null,
-      pair: pairOrNull(body.pair), raised: graduated ? target : raised, graduationTarget: target,
+      pair: pairOrNull(body.pair), raised: graduated ? (target ?? raised) : raised, graduationTarget: target,
       soldShares: version === 'fair' ? Number(body.sold || 0) : undefined,
       hasBond: Boolean(body.bond) && bondState === 1, bondState: body.bond ? bondState : null,
       bondAmount: body.bond?.amount != null ? String(body.bond.amount) : null, source: 'api',
