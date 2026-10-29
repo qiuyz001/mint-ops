@@ -50,6 +50,43 @@ export class Rules {
     return { substantial, changes, strategyCard: card };
   }
 
+  async gang(current, { isNew = false, eventId = null } = {}) {
+    const previous = this.store.token(current.token);
+    const now = Date.now();
+    const fresh = current.blockTime && now / 1000 - current.blockTime <= this.config.strategy.maxNewTokenAgeSec;
+    const changes = [];
+    if (isNew) changes.push(`Gang ${current.platformVersion || 'unknown'} 新盘`);
+    const oldProgress = previous?.progressPct ?? 0;
+    const newProgress = current.progressPct ?? 0;
+    const crossed = this.config.thresholds.filter((x) => oldProgress < x && newProgress >= x);
+    if (crossed.length) changes.push(`进度跨过 ${crossed.join('/')}%，当前 ${newProgress.toFixed(2)}%`);
+    if (current.hasBond && !previous?.hasBond) changes.push(`新增押金 ${current.bondAmount ?? 'unknown'} ${current.quote || ''}`.trim());
+    if (current.graduated && previous && !previous.graduated) changes.push('已毕业并进入 DEX');
+    const substantial = changes.length > 0;
+    const next = {
+      ...previous, ...current, nextCheckAt: isNew ? now : this.nextCheck(current, now), updatedAt: now,
+    };
+    this.store.setToken(current.token, next);
+    const card = isNew ? buildStrategyCard(current, this.config) : null;
+    if (card) await this.notifier.event('strategy_card', card, { reason: card.reasons.join('；') });
+    await this.notifier.event(isNew ? 'launchpad_token' : 'gang_state', {
+      token: current.token,
+      name: current.name || current.symbol,
+      platform: current.platform,
+      platformVersion: current.platformVersion,
+      creator: current.creator,
+      quote: current.quote,
+      progressPct: current.progressPct,
+      graduated: current.graduated,
+      hasBond: current.hasBond,
+      bondAmount: current.bondAmount,
+      raised: current.raised,
+      eventId,
+      isHistorical: isNew && !fresh,
+    }, { substantial, reason: changes.join('；') || '常规状态记录' });
+    return { substantial, changes, strategyCard: card };
+  }
+
   async launchpad(current, { eventId = null } = {}) {
     const previous = this.store.token(current.token);
     const fresh = current.blockTime && Date.now() / 1000 - current.blockTime <= this.config.strategy.maxNewTokenAgeSec;
