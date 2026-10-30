@@ -28,6 +28,17 @@
 **抗漂移的关键**：`kind` 列表不是唯一的入口，`knownTracks` 只是"预期值"。任何**没见过的 track、新增字段、字段消失、榜单突然变空**都会变成
 `NEW_MODE` / `SCHEMA_DRIFT` 信号，而不是让脚本静默失效。这就是它能自动发现 fly、也能发现"下一个 fly"的原因。
 
+### 信号分类（2026-10-30 按 review 补充）
+
+| category | 信号 | 含义 | 进 AI 队列 |
+|---|---|---|---|
+| `intel` | `FAST_FILL` / `GRADUATED` | 事后情报（已打满），**不是买入点** | ✅（high） |
+| `intel` | `NEW_MODE` / `SCHEMA_DRIFT` | 平台改版/新玩法，运维级 | ✅（high） |
+| `intel` | `NEW_TOKEN` | 新进榜，单独价值低 | ❌（med，只进 signals.jsonl） |
+| `actionable` | `VELOCITY_SPIKE` / `TRADE_BURST` | 可能有可观察窗口 | ✅（high） |
+| `actionable` | `PROGRESS_LADDER` ≥50% | 进度过半，可观察 | ✅（≥50 才进） |
+| `watch` | `PROGRESS_LADDER` <50% | 记录用 | ❌ |
+
 ---
 
 ## 二、谁做什么（明确边界）
@@ -70,9 +81,18 @@ node scripts/gang-watch.mjs --watch --stay # 常驻且永不退出，只写文�
 | 码 | 含义 | 上层动作 |
 |---|---|---|
 | 0 | 正常，无 HIGH 信号 | 什么都不用做（0 token） |
-| 10 | 出现 HIGH 信号（新盘/打满/速度异常） | 读 `digest.md` → 让 AI 分析 |
+| 10 | 出现 HIGH 信号（新盘/打满/速度异常） | 读 `prompt.txt`（没有就读 `digest.md`）→ 让 AI 分析 |
 | 11 | 出现抗漂移事件（新模式/字段变化） | 优先看 `ai-queue.jsonl`，可能需要改配置 |
 | 1 | 抓取失败 | 检查网络，不要误判为"没盘" |
+
+> **推荐生产跑法：cron `once`（每 1–5 分钟），而不是常驻 `--watch`。**
+> 每次新进程重新读盘作基线，天然没有"内存状态漂移"问题。
+> `--watch` 已在 2026-10-30 修复（每轮回写 `prevTokens` / `prevMeta`，看日志里 `prev=` 是否随轮次前进即可验证），但仍建议生产用 cron：
+>
+> ```bash
+> */1 * * * * cd /path/to/mint-ops && node scripts/gang-watch.mjs --json >> data/gang/cron.log 2>&1; \
+>   code=$?; if [ $code -eq 10 ] || [ $code -eq 11 ]; then <通知/AI>; fi
+> ```
 
 ---
 

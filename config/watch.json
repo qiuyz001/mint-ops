@@ -26,6 +26,7 @@
     "analysisFile": "analysis.md",
     "promptFile": "prompt.txt",
     "maxQueueItemsPerRun": 3,
-    "onlySignals": ["NEW_MODE", "SCHEMA_DRIFT", "FAST_FILL", "VELOCITY_SPIKE", "GRADUATED", "NEW_TOKEN"]
+    "ladderMinStepForQueue": 50,
+    "onlySignals": ["NEW_MODE", "SCHEMA_DRIFT", "FAST_FILL", "VELOCITY_SPIKE", "GRADUATED", "PROGRESS_LADDER"]
   }
 }

@@ -10,9 +10,23 @@ import path from "node:path";
 
 const HIGH = new Set(["NEW_MODE", "SCHEMA_DRIFT", "FAST_FILL", "VELOCITY_SPIKE", "GRADUATED"]);
 
+/** 信号分类：情报（事后）vs 可观察窗口（事前） */
+const CATEGORY = {
+  NEW_MODE: "intel",
+  SCHEMA_DRIFT: "intel",
+  FAST_FILL: "intel",
+  GRADUATED: "intel",
+  NEW_TOKEN: "intel",
+  VELOCITY_SPIKE: "actionable",
+  TRADE_BURST: "actionable",
+  PROGRESS_LADDER: "watch",
+};
+
 export function makeSignal(type, token, extra = {}) {
+  const category = extra.step !== undefined && type === "PROGRESS_LADDER" ? (extra.step >= 50 ? "actionable" : "watch") : (CATEGORY[type] ?? "intel");
   return {
     type,
+    category,
     priority: HIGH.has(type) ? "high" : "med",
     symbol: token?.symbol ?? null,
     address: token?.address ?? null,
@@ -156,22 +170,30 @@ export function buildDigest({ ranked, signals, meta, cfg, topN = 6, maxBytes = 3
   return text;
 }
 
-/** 只有 high 信号才进 AI 队列，每条带最小证据，便于 AI 少读原始数据 */
+/** 只有需要判断的信号才进 AI 队列：high 信号 + 「可观察窗口」类（进度过半） */
 export function buildAiQueue(signals, cfg) {
   const allow = new Set(cfg.ai?.onlySignals ?? []);
+  const minStep = cfg.ai?.ladderMinStepForQueue ?? 50;
   return signals
-    .filter((s) => s.priority === "high" && allow.has(s.type))
+    .filter((s) => {
+      if (!allow.has(s.type)) return false;
+      if (s.priority === "high") return true;
+      return s.type === "PROGRESS_LADDER" && (s.step ?? 0) >= minStep;
+    })
     .slice(0, cfg.ai?.maxQueueItemsPerRun ?? 3)
     .map((s) => ({
       type: s.type,
+      category: s.category ?? null,
       symbol: s.symbol,
       address: s.address,
       track: s.track,
       evidence: {
-        progressPct: s.progressPct, fillMinutes: s.fillMinutes, trades: s.trades,
+        progressPct: s.progressPct, step: s.step ?? null, fillMinutes: s.fillMinutes, trades: s.trades,
         velocity: s.velocity, raiseTargetBnb: s.raiseTargetBnb, detail: s.detail ?? null,
       },
-      ask: "这个信号意味着什么？是否值得进一步采集（holders/资金流/合约门禁）？给出 3 行以内结论 + 建议动作。",
+      ask: s.category === "intel"
+        ? "这是事后情报：说明它为什么值得记录（或是否只是噪音），不要当成买入信号。"
+        : "这是可观察窗口：说明它是否值得进一步采集（holders/资金流/合约门禁），并给出观察阈值。",
       at: new Date(s.at).toISOString(),
     }));
 }

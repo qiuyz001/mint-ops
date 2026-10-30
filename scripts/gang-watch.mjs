@@ -37,9 +37,13 @@ const readJson = (file, fallback) => {
 };
 
 const state = readJson(path.join(OUT, "meta.json"), { prevMeta: null, meta: null, seen: {} });
-const prevTokens = (() => {
+let prevTokens = (() => {
   const cur = readJson(path.join(OUT, "current.json"), null);
   return cur?.tokens ?? {};
+})();
+let prevSnapshotAt = (() => {
+  const cur = readJson(path.join(OUT, "current.json"), null);
+  return cur?.at ?? null;
 })();
 
 async function cycle() {
@@ -81,12 +85,17 @@ async function cycle() {
   const high = signals.filter((s) => s.priority === "high");
 
   // 落盘
+  const nextTokens = Object.fromEntries(ranked.map((t) => [t.address, { progressPct: t.progressPct, graduated: t.graduated, at: Date.now() }]));
   writeState(OUT, {
-    current: { at: Date.now(), tokens: Object.fromEntries(ranked.map((t) => [t.address, { progressPct: t.progressPct, graduated: t.graduated, at: Date.now() }])) },
+    current: { at: Date.now(), tokens: nextTokens },
     prevMeta: meta,
     meta,
     seen: state.seen,
   });
+  // 关键：常驻模式下必须回写内存基线，否则下一轮还在跟"启动时快照"比
+  prevTokens = nextTokens;
+  prevSnapshotAt = Date.now();
+  state.prevMeta = meta;
   appendSignals(OUT, signals);
 
   const digest = buildDigest({ ranked, signals, meta, cfg, topN: cfgAll.digest.topN, maxBytes: cfgAll.digest.maxBytes });
@@ -108,7 +117,9 @@ async function cycle() {
     at: new Date().toISOString(),
     elapsedMs: Date.now() - started,
     counts: meta.counts,
-    signals: signals.map((s) => ({ type: s.type, priority: s.priority, symbol: s.symbol, address: s.address, detail: s.detail ?? null, fillMinutes: s.fillMinutes ?? null })),
+    uniqueCounts: meta.uniqueCounts,
+    baseline,
+    signals: signals.map((s) => ({ type: s.type, category: s.category, priority: s.priority, symbol: s.symbol, address: s.address, detail: s.detail ?? null, fillMinutes: s.fillMinutes ?? null })),
     top: ranked.slice(0, cfgAll.digest.topN).map((x) => ({ symbol: x.symbol, address: x.address, score: x.score, progressPct: x.progressPct, track: x.track, trades: x.trades })),
     aiQueue: queue.length,
     promptFile: prompt ? path.relative(ROOT, promptFile) : null,
@@ -138,7 +149,8 @@ if (watch) {
       const res = await cycle();
       // 每次轮询只打印一行，避免日志膨胀
       const high = res.signals.filter((s) => s.priority === "high");
-      console.log(`[${new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })}] ${Object.entries(res.summary.counts).map(([k, v]) => `${k}=${v}`).join(" ")} · signal=${res.signals.length} high=${high.length}`);
+      const prevAt = prevSnapshotAt ? new Date(prevSnapshotAt).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "-";
+      console.log(`[${new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })}] ${Object.entries(res.summary.uniqueCounts ?? res.summary.counts).map(([k, v]) => `${k}=${v}`).join(" ")} · signal=${res.signals.length} high=${high.length} · prev=${prevAt}`);
       if (high.length) printHuman(res);
       if (high.length && !stay) process.exit(high.some((s) => s.type === "NEW_MODE" || s.type === "SCHEMA_DRIFT") ? 11 : 10);
       if (high.length && stay) {
