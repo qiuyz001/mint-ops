@@ -1,0 +1,177 @@
+/**
+ * 信号层：把"两次快照的差"变成结构化的信号，并生成两份产物：
+ *   - digest.md    ← 给 AI 读（<= maxBytes，只有值得看的东西）
+ *   - ai-queue.jsonl ← 只有必须 AI 判断的异常（每条一行 JSON，带证据）
+ *
+ * 这里没有任何模型调用：脚本算出"发生了什么"，AI 只负责"这意味着什么"。
+ */
+import fs from "node:fs";
+import path from "node:path";
+
+const HIGH = new Set(["NEW_MODE", "SCHEMA_DRIFT", "FAST_FILL", "VELOCITY_SPIKE", "GRADUATED"]);
+
+export function makeSignal(type, token, extra = {}) {
+  return {
+    type,
+    priority: HIGH.has(type) ? "high" : "med",
+    symbol: token?.symbol ?? null,
+    address: token?.address ?? null,
+    kind: token?.kind ?? null,
+    track: token?.track ?? null,
+    progressPct: token?.progressPct ?? null,
+    score: token?.score ?? null,
+    reasons: token?.reasons ?? [],
+    at: Date.now(),
+    ...extra,
+  };
+}
+
+/** 两次快照对比 → 信号数组 */
+export function diff(prev, ranked, driftEvents, cfg, { baseline = false } = {}) {
+  const signals = [];
+  const nowSec = Date.now() / 1000;
+
+  for (const d of driftEvents) {
+    signals.push({ type: d.type, priority: "high", detail: d.detail, field: d.field ?? null, track: d.track ?? null, at: Date.now() });
+  }
+
+  for (const t of ranked) {
+    const p = prev[t.address];
+
+    if (!p) {
+      if (baseline) continue; // 首次建基线：只记录，不产生噪音信号
+      const ageSec = t.createdAt ? nowSec - t.createdAt : null;
+      const fresh = ageSec !== null && ageSec <= (cfg.freshWindowSec ?? 300);
+      const active = (t.trades ?? 0) >= (cfg.freshTradesIn5Min ?? 20);
+      if (fresh || active) signals.push(makeSignal("NEW_TOKEN", t, { ageSec: ageSec === null ? null : Math.round(ageSec), note: fresh ? "新盘" : "有成交" }));
+      continue;
+    }
+
+    // 进度阶梯
+    for (const step of cfg.progressLadder ?? []) {
+      if ((p.progressPct ?? 0) < step && (t.progressPct ?? 0) >= step) {
+        signals.push(makeSignal("PROGRESS_LADDER", t, { step, from: p.progressPct, to: t.progressPct }));
+      }
+    }
+
+    // 速度异常
+    if (t.velocity >= (cfg.velocityPctPerMin ?? 3)) {
+      signals.push(makeSignal("VELOCITY_SPIKE", t, { velocity: Number(t.velocity.toFixed(2)), from: p.progressPct, to: t.progressPct }));
+    }
+
+    // 打满
+    if (!p.graduated && t.graduated) {
+      const fillMin = t.graduatedAt && t.createdAt ? (t.graduatedAt - t.createdAt) / 60 : null;
+      signals.push(makeSignal("GRADUATED", t, { fillMinutes: fillMin === null ? null : Number(fillMin.toFixed(1)), trades: t.trades }));
+      if (fillMin !== null && fillMin <= (cfg.fillFastMinutes ?? 30)) {
+        signals.push(makeSignal("FAST_FILL", t, { fillMinutes: Number(fillMin.toFixed(1)), trades: t.trades, raiseTargetBnb: t.raiseTargetBnb }));
+      }
+    }
+
+    // 短时间交易爆发
+    const ageSec = t.createdAt ? nowSec - t.createdAt : null;
+    if (ageSec !== null && ageSec <= (cfg.freshWindowSec ?? 300) && (t.trades ?? 0) >= (cfg.freshTradesIn5Min ?? 20)) {
+      signals.push(makeSignal("TRADE_BURST", t, { ageSec: Math.round(ageSec), trades: t.trades }));
+    }
+  }
+  return signals;
+}
+
+/** 只保留"值得打扰"的信号（去重：同类型+同地址在窗口内只发一次） */
+export function dedupe(signals, seen, windowMs = 30 * 60_000) {
+  const now = Date.now();
+  const out = [];
+  for (const s of signals) {
+    if (!s.address && !s.type.startsWith("NEW_MODE") && s.type !== "SCHEMA_DRIFT") { out.push(s); continue; }
+    const key = `${s.type}:${s.address ?? s.field ?? s.track}`;
+    if (seen[key] && now - seen[key] < windowMs) continue;
+    seen[key] = now;
+    out.push(s);
+  }
+  return out;
+}
+
+export function writeState(dir, { current, prevMeta, meta, seen }) {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "current.json"), JSON.stringify(current, null, 0));
+  fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify({ prevMeta, meta, seen }, null, 2));
+}
+
+export function appendSignals(dir, signals) {
+  if (!signals.length) return;
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "signals.jsonl");
+  fs.appendFileSync(file, signals.map((s) => JSON.stringify(s)).join("\n") + "\n");
+}
+
+/** 给 AI 的紧凑摘要：只含结论性字段，不带原始 JSON */
+export function buildDigest({ ranked, signals, meta, cfg, topN = 6, maxBytes = 3500 }) {
+  const lines = [];
+  const t = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
+  lines.push(`# Gang 扫盘摘要 · ${t}`);
+  lines.push("");
+  const counts = Object.entries(meta?.counts ?? {}).map(([k, v]) => `${k}=${v}`).join(" · ");
+  lines.push(`**榜单**：${counts || "-"}`);
+  const high = signals.filter((s) => s.priority === "high");
+  lines.push(`**信号**：high=${high.length} / total=${signals.length}`);
+  lines.push("");
+
+  if (high.length) {
+    lines.push("## 需要判断（HIGH）");
+    high.slice(0, 8).forEach((s, i) => {
+      const bits = [s.type, s.symbol, s.address ? s.address.slice(0, 10) + "…" : "", s.detail ?? ""].filter(Boolean);
+      const ev = [];
+      if (s.progressPct !== null && s.progressPct !== undefined) ev.push(`进度${s.progressPct}%`);
+      if (s.fillMinutes) ev.push(`打满${s.fillMinutes}分钟`);
+      if (s.trades) ev.push(`${s.trades}笔`);
+      if (s.velocity) ev.push(`${s.velocity}%/min`);
+      if (s.raiseTargetBnb) ev.push(`目标${s.raiseTargetBnb}BNB`);
+      lines.push(`${i + 1}. ${bits.join(" · ")}${ev.length ? " —— " + ev.join(" / ") : ""}`);
+    });
+    lines.push("");
+  }
+
+  lines.push(`## 分数榜（前 ${topN}）`);
+  lines.push("| 分数 | 符号 | 地址 | track | 进度 | 目标 | 交易 | 创建 |");
+  lines.push("|---|---|---|---|---|---|---|---|");
+  for (const x of ranked.slice(0, topN)) {
+    const created = x.createdAt ? new Date(x.createdAt * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }).slice(5) : "-";
+    lines.push(
+      `| ${x.score} | ${x.symbol ?? "?"} | ${x.address.slice(0, 10)}… | ${x.track} | ${x.progressPct ?? "-"}% | ${x.raiseTargetBnb ?? "-"} | ${x.trades ?? "-"} | ${created} |`
+    );
+  }
+  lines.push("");
+  lines.push("## 数据缺口");
+  const missing = new Set();
+  for (const x of ranked.slice(0, topN)) {
+    if (x.holders === null) missing.add("holders");
+    if (!x.fdvUsd) missing.add("fdvUsd");
+    if (x.raiseTargetBnb === null) missing.add("raiseBnb");
+    if (!x.createdAt) missing.add("createdAt");
+  }
+  lines.push(missing.size ? `- ${[...missing].join(" / ")}（部分盘缺失，判断时按"未知"处理）` : "- 无");
+
+  let text = lines.join("\n");
+  if (Buffer.byteLength(text) > maxBytes) text = text.slice(0, maxBytes) + "\n…（截断）";
+  return text;
+}
+
+/** 只有 high 信号才进 AI 队列，每条带最小证据，便于 AI 少读原始数据 */
+export function buildAiQueue(signals, cfg) {
+  const allow = new Set(cfg.ai?.onlySignals ?? []);
+  return signals
+    .filter((s) => s.priority === "high" && allow.has(s.type))
+    .slice(0, cfg.ai?.maxQueueItemsPerRun ?? 3)
+    .map((s) => ({
+      type: s.type,
+      symbol: s.symbol,
+      address: s.address,
+      track: s.track,
+      evidence: {
+        progressPct: s.progressPct, fillMinutes: s.fillMinutes, trades: s.trades,
+        velocity: s.velocity, raiseTargetBnb: s.raiseTargetBnb, detail: s.detail ?? null,
+      },
+      ask: "这个信号意味着什么？是否值得进一步采集（holders/资金流/合约门禁）？给出 3 行以内结论 + 建议动作。",
+      at: new Date(s.at).toISOString(),
+    }));
+}

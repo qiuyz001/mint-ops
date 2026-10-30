@@ -6,6 +6,10 @@ const FOUR_TOPIC = ethers.id('TokenCreate(address,address,uint256,string,string,
 export const GANG_OLD = '0x315Ba2e8952D06094CC636b2B84229FA32fb23A7';
 export const GANG_V2 = '0x1B8F3f69DFa0a7F63d308C7EB0Fd38D8b099966E';
 export const GANG_V3 = '0x15CFD2dc8278Fb87a1783ef42111618E20874365';
+// 2026-10-30 新增：fly（持续铸造 / continuous mint）用的是另一个 pad，registry kind=3
+export const GANG_FLY = '0x631e66560F4FAE4e486B65349edE48189E48B029';
+export const GANG_FLY_KIND = 3;
+export const GANG_API = 'https://gang.fun/api/market';
 export const GANG_REGISTRY = '0x4fF77D4d9ac080939a24E1B805206bA094C44e5C';
 export const GANG_BOND = '0xe92dC940CB23Dc328639A7334e69F9CCdf3a14E4';
 export const GANG_OLD_TOPIC = '0xe57a519fe6a031fac5d360f4b8ce246c86dd280b40dc37b68c0a7cc7394ef9c0';
@@ -157,6 +161,11 @@ export class LaunchpadWatcher {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       if (!this.running) break;
       await this.refreshGang();
+      // 每 60s 用平台 API 补一次（抗漂移兜底：新 pad / 新 kind 也能进来）
+      if (Date.now() - (this.lastApiSeedAt || 0) >= 60_000) {
+        this.lastApiSeedAt = Date.now();
+        await this.seedFromGangApi(['fly', 'fair']).catch(() => {});
+      }
     }
   }
 
@@ -201,6 +210,10 @@ export class LaunchpadWatcher {
     const address = token.token;
     const version = token.platformVersion || (token.quoteAddress ? 'v2' : 'old');
     if (!ethers.isAddress(address)) throw new Error(`无效 Gang token 地址：${address}`);
+    // fly / 未知新版本：走平台 API（抗漂移：不依赖 pad 的私有 ABI）
+    if (!['old', 'v2', 'v3', 'fair'].includes(version)) {
+      return this.readGangApi(address, version || 'fly');
+    }
     if (version === 'old') {
       return this.rpc.call(async (provider) => {
         const contract = new ethers.Contract(GANG_OLD, OLD_ABI, provider);
@@ -341,6 +354,76 @@ export class LaunchpadWatcher {
     }
     this.store.save();
     return items.length;
+  }
+
+  /**
+   * 从 Gang 平台 API 读单个代币（抗漂移：新模式/新 pad 不用改 ABI）
+   * kind: fly / fair / v3 / stocks
+   */
+  async readGangApi(address, kind = 'fly') {
+    const url = `${GANG_API}?kind=${encodeURIComponent(kind)}&sort=new&limit=60`;
+    const response = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error(`gang API HTTP ${response.status}`);
+    const body = await response.json();
+    const item = (body.items || []).find((x) => String(x.address).toLowerCase() === address.toLowerCase());
+    if (!item) throw new Error(`gang API 中未找到 ${address}（kind=${kind}）`);
+    const graduated = Boolean(item.graduated);
+    const progress = item.progressPct === null || item.progressPct === undefined ? null : Number(item.progressPct);
+    return {
+      token: address.toLowerCase(), platform: 'gang', platformVersion: kind,
+      creator: item.creator ? String(item.creator).toLowerCase() : null,
+      progressPct: progress, graduated, status: graduated ? 4 : 1,
+      statusName: graduated ? 'DEX' : 'MINTING',
+      quote: item.quoteSymbol || 'BNB', quoteAddress: null,
+      pair: null,
+      raised: item.raisedBnb ?? null, graduationTarget: item.raiseBnb ?? null,
+      trades: item.trades ?? null, holders: item.holders ?? null,
+      graduatedAt: item.graduatedAt ?? null,
+      source: 'api',
+    };
+  }
+
+  /** 用 API 补齐链上事件漏掉的盘（尤其是新出现的 fly / 未来新 kind） */
+  async seedFromGangApi(kinds = ['fly'], limit = 60) {
+    let added = 0;
+    const unknownTracks = new Set();
+    for (const kind of kinds) {
+      try {
+        const url = `${GANG_API}?kind=${encodeURIComponent(kind)}&sort=new&limit=${limit}`;
+        const response = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const body = await response.json();
+        for (const item of body.items || []) {
+          const address = String(item.address).toLowerCase();
+          if (!ethers.isAddress(address)) continue;
+          if (item.track && !['main', 'v3', 'fair', 'fly', 'stocks'].includes(item.track)) unknownTracks.add(item.track);
+          if (this.store.state.tokens[address]) continue;
+          this.store.setToken(address, {
+            token: address, address, platform: 'gang', platformVersion: kind,
+            name: item.name, symbol: item.symbol, creator: item.creator,
+            quote: item.quoteSymbol || 'BNB', quoteAddress: null,
+            createdAt: item.createdAt ?? null, seenAt: Date.now(),
+            source: 'api-seed',
+          });
+          added++;
+        }
+      } catch (error) {
+        await this.error(`gang-api-seed:${kind}`, error);
+      }
+    }
+    if (unknownTracks.size) {
+      await this.rules.anomalyOnce(
+        `gang:new-track:${[...unknownTracks].sort().join(',')}`,
+        'gang_new_track',
+        {
+          summary: `Gang 出现新的 track：${[...unknownTracks].join(', ')}（可能是新模式）`,
+          evidence: { kinds, unknownTracks: [...unknownTracks] },
+          suggestedAction: '把新 track 加入 config/watch.json 的 knownTracks，并用 scripts/gang-watch.mjs 复核字段',
+        }
+      );
+    }
+    if (added) this.store.save();
+    return { added, unknownTracks: [...unknownTracks] };
   }
 
   async error(kind, error) {

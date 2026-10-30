@@ -1,0 +1,30 @@
+{
+  "gang": {
+    "api": "https://gang.fun/api/market",
+    "kinds": ["fly", "fair", "v3", "stocks"],
+    "knownTracks": ["main", "v3", "fly", "fair", "stocks"],
+    "pollSec": 20,
+    "limit": 60,
+    "sort": "new",
+    "timeoutMs": 20000,
+    "retries": 3,
+    "progressLadder": [10, 25, 50, 75, 95],
+    "velocityPctPerMin": 3,
+    "freshTradesIn5Min": 20,
+    "freshWindowSec": 300,
+    "fillFastMinutes": 30,
+    "quietMaxAgeMin": 180,
+    "maxTrackedPerKind": 200
+  },
+  "digest": {
+    "topN": 6,
+    "maxBytes": 3500,
+    "includeTracking": true
+  },
+  "ai": {
+    "queueFile": "ai-queue.jsonl",
+    "analysisFile": "analysis.md",
+    "maxQueueItemsPerRun": 3,
+    "onlySignals": ["NEW_MODE", "SCHEMA_DRIFT", "FAST_FILL", "VELOCITY_SPIKE", "GRADUATED", "NEW_TOKEN"]
+  }
+}
