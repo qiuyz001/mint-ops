@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fetchAll, detectDrift } from "../src/watch/gang-api.js";
 import { rank } from "../src/watch/score.js";
-import { diff, dedupe, buildDigest, buildAiQueue, appendSignals, writeState } from "../src/watch/signals.js";
+import { diff, dedupe, buildDigest, buildAiQueue, buildPrompt, appendSignals, writeState } from "../src/watch/signals.js";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const cfgAll = JSON.parse(fs.readFileSync(path.join(ROOT, "config/watch.json"), "utf8"));
@@ -98,6 +98,12 @@ async function cycle() {
     fs.appendFileSync(path.join(OUT, "ai-queue.jsonl"), queue.map((q) => JSON.stringify(q)).join("\n") + "\n");
   }
 
+  // 只在高信号时生成"开箱即用"的 prompt；否则删掉旧的，避免 AI 读到过期内容
+  const promptFile = path.join(OUT, cfgAll.ai?.promptFile ?? "prompt.txt");
+  const prompt = buildPrompt({ digest, queue, signals, cfg: cfgAll });
+  if (prompt) fs.writeFileSync(promptFile, prompt);
+  else if (fs.existsSync(promptFile)) fs.unlinkSync(promptFile);
+
   const summary = {
     at: new Date().toISOString(),
     elapsedMs: Date.now() - started,
@@ -105,6 +111,7 @@ async function cycle() {
     signals: signals.map((s) => ({ type: s.type, priority: s.priority, symbol: s.symbol, address: s.address, detail: s.detail ?? null, fillMinutes: s.fillMinutes ?? null })),
     top: ranked.slice(0, cfgAll.digest.topN).map((x) => ({ symbol: x.symbol, address: x.address, score: x.score, progressPct: x.progressPct, track: x.track, trades: x.trades })),
     aiQueue: queue.length,
+    promptFile: prompt ? path.relative(ROOT, promptFile) : null,
     errors,
   };
   return { summary, signals, drifts, digest, queue };

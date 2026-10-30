@@ -175,3 +175,37 @@ export function buildAiQueue(signals, cfg) {
       at: new Date(s.at).toISOString(),
     }));
 }
+
+/**
+ * 生成"开箱即用"的 prompt：上层只要把 prompt.txt 丢给模型即可，不用再拼格式。
+ * 只在有 HIGH 信号时生成，避免 AI 读到"无信号"的废话。
+ */
+export function buildPrompt({ digest, queue, signals, cfg, generatedAt }) {
+  const high = signals.filter((s) => s.priority === "high");
+  if (!high.length) return null;
+  const time = generatedAt ?? new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
+  const lines = [];
+  lines.push(`你是链上打新情报分析员。下面是脚本自动扫出来的信号（${time} Asia/Shanghai）。`);
+  lines.push(`脚本已经完成了抓取、比对、打分、去重；你只需要做判断，不要重新扫盘，不要编造数字。`);
+  lines.push("");
+  lines.push("## 硬约束");
+  lines.push("- 只读分析：不要下单、不要签名、不要调用任何交易接口。");
+  lines.push("- 只使用下面给出的数据；缺失的字段写“未知”，不要推测。");
+  lines.push("- 输出必须 ≤ 5 行：①这信号意味着什么 ②风险或可疑点 ③是否值得进一步采集（具体采哪些字段） ④建议动作（观察/深入/忽略）。");
+  lines.push("");
+  lines.push("## 信号摘要");
+  lines.push(digest);
+  lines.push("");
+  if (queue.length) {
+    lines.push("## 待判断条目（优先级从高到低）");
+    queue.forEach((q, i) => {
+      lines.push(`${i + 1}. [${q.type}] ${q.symbol ?? "?"} ${q.address ?? ""} ${q.track ? "(" + q.track + ")" : ""}`);
+      lines.push(`   证据：${JSON.stringify(q.evidence)}`);
+    });
+    lines.push("");
+  }
+  lines.push("## 回答格式");
+  lines.push("每条形如：`[类型] 符号 地址 → 结论一句话 | 风险 | 下一步`，不要复述输入。");
+  return lines.join("\n");
+}
+

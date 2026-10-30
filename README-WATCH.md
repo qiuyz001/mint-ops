@@ -119,6 +119,26 @@ node scripts/gang-watch.mjs --watch --stay # 常驻且永不退出，只写文�
 |---|---|
 | 无信号（常态） | **0**（脚本只打印一行，不进模型） |
 | 有新盘但未达阈值 | **0**（只写 signals.jsonl，不进队列） |
-| HIGH 信号 | 1 次 × `digest.md`（≈0.8–1.5KB）+ 最多 3 条 queue |
+| HIGH 信号 | **1 个文件**：`data/gang/prompt.txt`（≈1.7–2.3KB，已含角色/约束/摘要/格式） |
 
 按 20 秒一轮、一天 4,320 轮计算，**常态下 AI 调用次数 ≈ 0–5 次/天**。
+
+---
+
+## 七、`prompt.txt`：开箱即用的模型输入
+
+只要出现 HIGH 信号，脚本会自动生成 `data/gang/prompt.txt`（否则**删除**，避免 AI 读到过期内容）。
+
+它已经包含：
+
+```
+你是链上打新情报分析员 …
+## 硬约束    只读/不编造/≤5 行输出
+## 信号摘要  ← digest.md 原文（≤3.5KB）
+## 待判断条目 ← ai-queue 里最多 3 条（带证据）
+## 回答格式  [类型] 符号 地址 → 结论 | 风险 | 下一步
+```
+
+上层只要 `cat data/gang/prompt.txt` 发给模型即可，**不需要再拼 prompt、不需要贴原始 JSON**。
+
+自检：`node scripts/gang-prompt-selftest.mjs`（用假数据验证摘要/队列/prompt 的大小与格式）。
