@@ -79,7 +79,9 @@ async function cycle() {
   meta.uniqueCounts = flat.reduce((acc, t) => { acc[t.kind] = (acc[t.kind] || 0) + 1; return acc; }, {});
 
   // 信号
-  const baseline = !state.prevMeta; // 首次运行：只建基线，不刷 NEW_TOKEN
+  const gapMs = prevSnapshotAt ? Date.now() - prevSnapshotAt : null;
+  const gapTooLong = gapMs !== null && gapMs > (cfg.baselineResetAfterMin ?? 60) * 60_000;
+  const baseline = !state.prevMeta || gapTooLong; // 首次运行 / 停机过久：只建基线，不补课
   const raw = diff(prevTokens, ranked, drifts, cfg, { baseline });
   const signals = dedupe(raw, state.seen);
   const high = signals.filter((s) => s.priority === "high");
@@ -119,6 +121,7 @@ async function cycle() {
     counts: meta.counts,
     uniqueCounts: meta.uniqueCounts,
     baseline,
+    gapMinutes: gapMs === null ? null : Math.round(gapMs / 60000),
     signals: signals.map((s) => ({ type: s.type, category: s.category, priority: s.priority, symbol: s.symbol, address: s.address, detail: s.detail ?? null, fillMinutes: s.fillMinutes ?? null })),
     top: ranked.slice(0, cfgAll.digest.topN).map((x) => ({ symbol: x.symbol, address: x.address, score: x.score, progressPct: x.progressPct, track: x.track, trades: x.trades })),
     aiQueue: queue.length,

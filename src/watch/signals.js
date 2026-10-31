@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const HIGH = new Set(["NEW_MODE", "SCHEMA_DRIFT", "FAST_FILL", "VELOCITY_SPIKE", "GRADUATED"]);
+const HIGH = new Set(["NEW_MODE", "SCHEMA_DRIFT", "FAST_FILL", "VELOCITY_SPIKE", "GRADUATED", "TRADE_BURST"]);
 
 /** 信号分类：情报（事后）vs 可观察窗口（事前） */
 const CATEGORY = {
@@ -124,7 +124,7 @@ export function buildDigest({ ranked, signals, meta, cfg, topN = 6, maxBytes = 3
   const t = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
   lines.push(`# Gang 扫盘摘要 · ${t}`);
   lines.push("");
-  const counts = Object.entries(meta?.counts ?? {}).map(([k, v]) => `${k}=${v}`).join(" · ");
+  const counts = Object.entries(meta?.uniqueCounts ?? meta?.counts ?? {}).map(([k, v]) => `${k}=${v}`).join(" · ");
   lines.push(`**榜单**：${counts || "-"}`);
   const high = signals.filter((s) => s.priority === "high");
   lines.push(`**信号**：high=${high.length} / total=${signals.length}`);

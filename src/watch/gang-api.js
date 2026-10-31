@@ -110,46 +110,77 @@ export async function fetchAll(cfg) {
  * 抗漂移检测：对比上一次看到的 track 集合 / 字段集合 / 顶层结构。
  * 任何"平台改版"都会变成显式事件，而不是让代码静默失效。
  */
+/**
+ * 抗漂移检测（2026-10-31 重构）：
+ *  - 按 kind 分别记录字段集合（fair 本来就没有 pad，跨 kind 取并集会闪）
+ *  - 字段增删聚合成 **一条** 信号（+N/−M），不按字段刷屏
+ *  - 空榜要**连续 2 次**才报，避免一次抖动误报
+ */
 export function detectDrift(prevMeta, results, cfg) {
   const drifts = [];
   const known = new Set(cfg.knownTracks ?? DEFAULT_TRACKS);
   const prevTracks = new Set(prevMeta?.tracks ?? []);
-  const prevFields = new Set(prevMeta?.fields ?? []);
-  const prevTop = new Set(prevMeta?.topLevelFields ?? []);
-  const seenTracks = new Set();
-  const seenFields = new Set();
-  const topFields = new Set();
+  const prevKindFields = prevMeta?.kindFields ?? {};
+  const prevEmpty = prevMeta?.emptyStreak ?? {};
+
+  const tracks = new Set();
+  const kindFields = {};
+  const emptyStreak = {};
+  const addedAll = new Set();
+  const removedAll = new Set();
+  const byKind = {};
 
   for (const r of results) {
-    for (const f of r.topLevelFields) topFields.add(f);
+    const fields = new Set();
     for (const it of r.items) {
-      seenTracks.add(it.track);
-      for (const f of it._fields) seenFields.add(f);
+      tracks.add(it.track);
+      for (const f of it._fields) fields.add(f);
     }
-    // 空榜 + 之前有数据 = 可能改版或限流
-    if (prevMeta?.counts?.[r.kind] > 0 && r.items.length === 0) {
-      drifts.push({ type: "SCHEMA_DRIFT", kind: r.kind, detail: "该 kind 由有数据变为空，疑似改版/限流/参数失效" });
+    kindFields[r.kind] = [...fields].sort();
+
+    // 连续 2 次为空才报
+    const streak = r.items.length === 0 ? (prevEmpty[r.kind] ?? 0) + 1 : 0;
+    emptyStreak[r.kind] = streak;
+    if (streak >= 2) {
+      drifts.push({ type: "SCHEMA_DRIFT", kind: r.kind, detail: `榜单连续 ${streak} 次为空（疑似改版/限流）` });
+    }
+
+    // 按 kind 比字段（只在两边都有基线时比）
+    const prevF = new Set(prevKindFields[r.kind] ?? []);
+    if (prevF.size) {
+      const added = [...fields].filter((f) => !prevF.has(f));
+      const removed = [...prevF].filter((f) => !fields.has(f));
+      if (added.length || removed.length) {
+        byKind[r.kind] = { added, removed };
+        added.forEach((f) => addedAll.add(f));
+        removed.forEach((f) => removedAll.add(f));
+      }
     }
   }
 
-  for (const t of seenTracks) {
+  // 字段变化聚合为一条
+  if (addedAll.size || removedAll.size) {
+    drifts.push({
+      type: "SCHEMA_DRIFT",
+      detail: `字段变化 +${addedAll.size}/−${removedAll.size}`,
+      added: [...addedAll].sort(),
+      removed: [...removedAll].sort(),
+      byKind,
+    });
+  }
+
+  for (const t of tracks) {
     if (!known.has(t)) drifts.push({ type: "NEW_MODE", track: t, detail: `出现未知 track=${t}（新模式）` });
     else if (!prevTracks.has(t) && prevTracks.size) drifts.push({ type: "NEW_MODE", track: t, detail: `首次观测到 track=${t}` });
   }
-  if (prevFields.size) {
-    for (const f of seenFields) if (!prevFields.has(f)) drifts.push({ type: "SCHEMA_DRIFT", field: f, detail: `新增字段 ${f}` });
-    for (const f of prevFields) if (!seenFields.has(f)) drifts.push({ type: "SCHEMA_DRIFT", field: f, detail: `字段消失 ${f}（可能改名）` });
-  }
-  if (prevTop.size) {
-    for (const f of topFields) if (!prevTop.has(f)) drifts.push({ type: "SCHEMA_DRIFT", field: `top.${f}`, detail: `顶层新增字段 ${f}` });
-    for (const f of prevTop) if (!topFields.has(f)) drifts.push({ type: "SCHEMA_DRIFT", field: `top.${f}`, detail: `顶层字段消失 ${f}` });
-  }
 
   const meta = {
-    tracks: [...seenTracks].sort(),
-    fields: [...seenFields].sort(),
-    topLevelFields: [...topFields].sort(),
+    tracks: [...tracks].sort(),
+    fields: [...new Set(Object.values(kindFields).flat())].sort(), // 仅作信息展示
+    kindFields,
+    emptyStreak,
     counts: Object.fromEntries(results.map((r) => [r.kind, r.items.length])),
+    topLevelFields: [...new Set(results.flatMap((r) => r.topLevelFields))].sort(),
     at: Date.now(),
   };
   return { drifts, meta };
