@@ -13,8 +13,11 @@
     "dry-run": "node scripts/mint-ops.mjs dry-run",
     "once": "node scripts/mint-ops.mjs once",
     "gang-scan": "node scripts/gang-scan.mjs",
+    "gang-watch": "node scripts/gang-watch.mjs",
+    "gang-watch:daemon": "node scripts/gang-watch.mjs --watch",
+    "test:prompt": "node scripts/gang-prompt-selftest.mjs",
     "status": "node scripts/mint-ops.mjs status",
-    "check": "node --check scripts/mint-ops.mjs && node --check scripts/gang-scan.mjs && node --check src/index.js && node --check src/watchers/launchpads.js && node --check src/rules.js"
+    "check": "node --check scripts/mint-ops.mjs && node --check scripts/gang-scan.mjs && node --check scripts/gang-watch.mjs && node --check src/index.js && node --check src/watchers/launchpads.js && node --check src/rules.js && node --check src/watch/gang-api.js && node --check src/watch/signals.js && node --check src/watch/score.js"
   },
   "dependencies": {
     "ethers": "6.17.0",
