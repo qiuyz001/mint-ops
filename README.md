@@ -1,6 +1,7 @@
 # Mint Ops · 事件驱动的 BSC 打新与盯盘
 
-> **扫盘（Gang / 抗漂移 / 省 AI）请看 [`README-WATCH.md`](./README-WATCH.md)**：
+> **跑之前先读 [`RUNBOOK.md`](./RUNBOOK.md)**（生产跑法 / cron / 退出码 / 故障排查）。
+> **扫盘设计（Gang / 抗漂移 / 省 AI）见 [`README-WATCH.md`](./README-WATCH.md)**：
 > 脚本负责发现与信号，AI 只在 HIGH 信号时读一份 ≤3.5KB 的摘要。
 
 这是一个从 `mint-ops-handoff` 演进的本地运行系统：用确定性脚本替代 AI 全市场定时扫描，AI 只负责异常解释、信息收集和规则建议。
