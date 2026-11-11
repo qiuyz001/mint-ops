@@ -77,11 +77,11 @@
     "auditTtlMs": 30000
   },
   "risk": {
-    "orderUsd": 10,
+    "orderUsd": 5,
     "maxExposureUsd": 30,
     "maxPositions": 3,
     "dailySpendUsd": 50,
-    "dailyLossUsd": 15,
+    "dailyLossUsd": null,
     "maxPositionLiquidityPct": 0.1,
     "cooldownMs": 3600000
   },

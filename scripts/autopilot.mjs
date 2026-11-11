@@ -12,8 +12,12 @@ const configArg = args.indexOf('--config');
 const cfg = JSON.parse(fs.readFileSync(configArg >= 0 ? path.resolve(args[configArg + 1]) : path.join(root, 'config/autopilot.json'), 'utf8'));
 if (!['paper', 'live'].includes(cfg.mode)) throw new Error('mode must be paper or live');
 for (const [group, names] of Object.entries({ risk: ['orderUsd', 'maxExposureUsd', 'maxPositions', 'dailySpendUsd', 'dailyLossUsd', 'maxPositionLiquidityPct', 'cooldownMs'], entry: ['minProgress', 'maxProgress', 'minVelocityPerMin', 'maxSnapshotGapMs', 'maxAgeMs', 'minNetBuyUsd', 'minLiquidityUsd', 'maxTop10Pct', 'maxDevPct', 'maxBundlerPct', 'maxTaxPct', 'maxQuoteLossPct', 'signalTtlMs', 'auditTtlMs'], exit: ['stopLossPct', 'trailActivateMultiple', 'trailDrawdownPct', 'maxHoldMs', 'stallAfterMs', 'stallMaxGainPct'] })) {
-  for (const name of names) if (!(typeof cfg[group]?.[name] === 'number' && Number.isFinite(cfg[group][name]) && cfg[group][name] > 0)) throw new Error(`Invalid ${group}.${name}`);
+  for (const name of names) {
+    if (group === 'risk' && name === 'dailyLossUsd' && cfg.risk.dailyLossUsd === null) continue;
+    if (!(typeof cfg[group]?.[name] === 'number' && Number.isFinite(cfg[group][name]) && cfg[group][name] > 0)) throw new Error(`Invalid ${group}.${name}`);
+  }
 }
+if (cfg.risk.orderUsd > 5) throw new Error('User mandate: at most $5 input per buy');
 if (!(cfg.scanIntervalMs >= 1000 && cfg.positionIntervalMs >= 1000 && cfg.timeoutMs > 0) || cfg.entry.minProgress >= cfg.entry.maxProgress || cfg.entry.maxProgress > 100 || cfg.exit.stopLossPct >= 100 || cfg.exit.trailDrawdownPct >= 100 || !(cfg.paper.initialCashUsd > 0) || !(cfg.paper.costBpsPerSide >= 0 && cfg.paper.costBpsPerSide < 10000)) throw new Error('Invalid timing, progress or paper settings');
 if (!Array.isArray(cfg.exit.takeProfit) || cfg.exit.takeProfit.some(s => !(s.multiple > 1 && s.originalPct > 0)) || cfg.exit.takeProfit.reduce((n, s) => n + s.originalPct, 0) > 100) throw new Error('Invalid take-profit ladder');
 if (cfg.mode === 'live' && (process.env.MINT_OPS_LIVE !== '1' || cfg.execution.armed !== true || !/^0x[0-9a-fA-F]{40}$/.test(cfg.execution.expectedAddress) || !(cfg.execution.maxSlippagePct > 0 && cfg.execution.maxSlippagePct <= 5))) throw new Error('Live requires armed, expectedAddress, capped slippage and MINT_OPS_LIVE=1');

@@ -50,7 +50,7 @@ export function riskDecision(state, t, cfg, now = Date.now()) {
   if (positions.reduce((n, p) => n + p.costRemaining, 0) + r.orderUsd > r.maxExposureUsd) reasons.push('exposure_cap');
   if (daily.spent + r.orderUsd > r.dailySpendUsd) reasons.push('daily_spend_cap');
   // Charge open positions at their remaining cost: the daily loss cap reserves worst-case loss.
-  if (Math.min(0, daily.pnl) - positions.reduce((n, p) => n + p.costRemaining, 0) - r.orderUsd < -r.dailyLossUsd) reasons.push('daily_loss_budget');
+  if (r.dailyLossUsd !== null && Math.min(0, daily.pnl) - positions.reduce((n, p) => n + p.costRemaining, 0) - r.orderUsd < -r.dailyLossUsd) reasons.push('daily_loss_budget');
   if (r.orderUsd > t.liquidity * r.maxPositionLiquidityPct / 100) reasons.push('depth_cap');
   if (state.cashUsd < r.orderUsd) reasons.push('insufficient_cash');
   return { eligible: reasons.length === 0, reasons, day };

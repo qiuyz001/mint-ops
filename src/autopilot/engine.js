@@ -102,6 +102,7 @@ export class Engine {
     }
   }
   async place(t, side, qty, extra) {
+    if (side === 'buy' && !(Number(qty) > 0 && Number(qty) <= 5)) throw new Error('Buy exceeds $5 mandate');
     const s = this.store.state;
     if (s.orders.some(o => !['confirmed', 'failed'].includes(o.status))) return;
     const o = { id: randomUUID(), status: 'submitting', side, qty, token: t, ...extra, at: this.now() };

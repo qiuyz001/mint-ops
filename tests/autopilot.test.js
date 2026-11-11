@@ -53,7 +53,7 @@ test('stop, partial profits, trailing, timeout and stalled exits', () => {
   assert.equal(exitDecision(p, null, c, now), null);
 });
 test('risk reserves potential full loss and blocks unresolved orders', () => {
-  const c = config(), s = initialState(c), t = token();
+  const c = config(), t = token(); c.risk.dailyLossUsd = 7.5; const s = initialState(c);
   assert.equal(riskDecision(s, t, c, now).eligible, true);
   s.positions.other = { qty: 1, costRemaining: 10 };
   assert.ok(riskDecision(s, t, c, now).reasons.includes('daily_loss_budget'));
@@ -62,16 +62,16 @@ test('risk reserves potential full loss and blocks unresolved orders', () => {
 test('paper buy/sell persists fills and never invokes a wallet', async () => {
   const c = config(), store = memory(c), t = token(); store.state.snapshots[t.key] = prev();
   const e = new Engine(c, store, { now: () => now, audit, broker: new Proxy({}, { get() { throw Error('wallet called in paper mode'); } }) });
-  await e.scan([t]); assert.ok(store.state.positions[t.key].qty > 0); assert.equal(store.state.cashUsd, 90);
+  await e.scan([t]); assert.ok(store.state.positions[t.key].qty > 0); assert.equal(store.state.cashUsd, 95);
   store.state.snapshots[t.key] = { ...t, price: 0.8 };
   await e.tick(); assert.equal(store.state.positions[t.key].qty, 0); assert.ok(store.state.cashUsd < 100);
 });
 test('live send timeout is durably unknown and never resubmitted', async () => {
   const c = config(); c.mode = 'live'; const store = memory(c); let calls = 0;
   const e = new Engine(c, store, { now: () => now, broker: { async submit() { calls++; throw Error('timeout'); } } });
-  await e.place(token(), 'buy', '10', { day: '2027-01-15' });
+  await e.place(token(), 'buy', '5', { day: '2027-01-15' });
   assert.equal(store.state.orders[0].status, 'unknown');
-  await e.place(token(), 'buy', '10', {}); await e.tick(); assert.equal(calls, 1);
+  await e.place(token(), 'buy', '5', {}); await e.tick(); assert.equal(calls, 1);
 });
 test('BAW unconfirmed FINISHED is not a fill', async () => {
   const c = config(); const broker = new BawBroker(c, async () => ({ list: [{ orderId: '1', status: 'FINISHED', txHash: null }] }));
@@ -120,4 +120,10 @@ test('partial fills keep the unfilled take-profit quantity outstanding', () => {
   assert.deepEqual(p.taken, []);
   assert.equal(exitDecision(p, 1.6, c.exit, now).fraction, 20 / 90);
   e.sellFill(p, 20, 30, 0, 0); assert.deepEqual(p.taken, [0]);
+});
+test('user mandate caps buys at $5 and permits no daily loss cap', async () => {
+  const c = config(); assert.equal(c.risk.orderUsd, 5); assert.equal(c.risk.dailyLossUsd, null);
+  const store = memory(c); store.state.days[new Date(now + 28800000).toISOString().slice(0, 10)] = { spent: 0, pnl: -100 };
+  assert.equal(riskDecision(store.state, token(), c, now).eligible, true);
+  const e = new Engine(c, store); await assert.rejects(e.place(token(), 'buy', '5.01', {}), /mandate/);
 });
