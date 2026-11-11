@@ -104,8 +104,8 @@ export class FlapWatcher {
     return {
       token: token.toLowerCase(), platform: 'flap', status, statusName: STATUS[status] || `unknown(${status})`,
       reserve: s.reserve.toString(), price: s.price.toString(), quote, quoteAddress,
-      extensionID: s.extensionID || ZERO32, buyTaxBps: v8 ? Number(s.buyTaxRate) : 0,
-      sellTaxBps: v8 ? Number(s.sellTaxRate) : 0, pool: v8 ? s.pool : null,
+      extensionID: s.extensionID || ZERO32, buyTaxBps: v8 ? Number(s.buyTaxRate) : null,
+      sellTaxBps: v8 ? Number(s.sellTaxRate) : null, pool: v8 ? s.pool : null,
       progressPct: v8 ? Number(s.progress) / 1e16 : null,
     };
   }

@@ -1,0 +1,122 @@
+{
+  "mode": "paper",
+  "dataDir": "data/autopilot",
+  "scanIntervalMs": 10000,
+  "positionIntervalMs": 3000,
+  "timeoutMs": 8000,
+  "gang": {
+    "enabled": true,
+    "api": "https://gang.fun/api/market",
+    "kinds": [
+      "fly",
+      "fair",
+      "v3",
+      "stocks"
+    ],
+    "limit": 100
+  },
+  "feeds": [
+    {
+      "chainId": "56",
+      "protocols": [
+        2001,
+        2002,
+        2004
+      ],
+      "stages": [
+        10,
+        20,
+        30
+      ]
+    },
+    {
+      "chainId": "CT_501",
+      "protocols": [
+        1001,
+        1004,
+        1008,
+        1009,
+        1011,
+        1012
+      ],
+      "stages": [
+        10,
+        20,
+        30
+      ]
+    },
+    {
+      "chainId": "8453",
+      "protocols": [
+        3001,
+        3002,
+        3006,
+        3011
+      ],
+      "stages": [
+        10,
+        20,
+        30
+      ]
+    }
+  ],
+  "entry": {
+    "minProgress": 75,
+    "maxProgress": 98,
+    "minVelocityPerMin": 1,
+    "maxSnapshotGapMs": 60000,
+    "maxAgeMs": 3600000,
+    "minNetBuyUsd": 2000,
+    "minLiquidityUsd": 10000,
+    "maxTop10Pct": 35,
+    "maxDevPct": 5,
+    "maxBundlerPct": 15,
+    "maxTaxPct": 5,
+    "maxQuoteLossPct": 8,
+    "signalTtlMs": 15000,
+    "auditTtlMs": 30000
+  },
+  "risk": {
+    "orderUsd": 10,
+    "maxExposureUsd": 30,
+    "maxPositions": 3,
+    "dailySpendUsd": 50,
+    "dailyLossUsd": 15,
+    "maxPositionLiquidityPct": 0.1,
+    "cooldownMs": 3600000
+  },
+  "exit": {
+    "stopLossPct": 15,
+    "takeProfit": [
+      {
+        "multiple": 1.5,
+        "originalPct": 30
+      },
+      {
+        "multiple": 2,
+        "originalPct": 30
+      }
+    ],
+    "trailActivateMultiple": 1.4,
+    "trailDrawdownPct": 20,
+    "maxHoldMs": 1800000,
+    "stallAfterMs": 180000,
+    "stallMaxGainPct": 5
+  },
+  "paper": {
+    "initialCashUsd": 100,
+    "costBpsPerSide": 150
+  },
+  "execution": {
+    "armed": false,
+    "allowedChains": [
+      "56"
+    ],
+    "expectedAddress": "",
+    "settlementToken": "0x55d398326f99059ff775485246999027b3197955",
+    "maxSlippagePct": 2,
+    "bawBin": "baw",
+    "bawScript": "",
+    "receiptRpc": "https://bsc-rpc.publicnode.com"
+  }
+}
