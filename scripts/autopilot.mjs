@@ -8,6 +8,9 @@ import { BawBroker } from '../src/autopilot/broker.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
+const durationIndex = args.indexOf('--duration-sec');
+const durationSec = durationIndex >= 0 ? Number(args[durationIndex + 1]) : null;
+if (durationSec !== null && (!Number.isFinite(durationSec) || durationSec <= 0)) throw new Error('duration-sec must be positive');
 const configArg = args.indexOf('--config');
 const cfg = JSON.parse(fs.readFileSync(configArg >= 0 ? path.resolve(args[configArg + 1]) : path.join(root, 'config/autopilot.json'), 'utf8'));
 if (!['paper', 'live'].includes(cfg.mode)) throw new Error('mode must be paper or live');
@@ -30,6 +33,7 @@ let stopping = false;
 const timers = new Map();
 const stop = () => { stopping = true; for (const [t, resolve] of timers) { clearTimeout(t); resolve(); } timers.clear(); };
 process.once('SIGINT', stop); process.once('SIGTERM', stop);
+const durationTimer = durationSec === null ? null : setTimeout(stop, durationSec * 1000);
 const sleep = ms => new Promise(resolve => { const t = setTimeout(() => { timers.delete(t); resolve(); }, ms); timers.set(t, resolve); });
 try {
   const store = new StateFile(dir, cfg), broker = new BawBroker(cfg);
@@ -76,5 +80,6 @@ try {
     await Promise.all([loop(scan, cfg.scanIntervalMs, 'scan'), loop(() => engine.tick(), cfg.positionIntervalMs, 'position'), loop(deliver, 5000, 'notify')]);
   }
 } finally {
+  if (durationTimer !== null) clearTimeout(durationTimer);
   fs.closeSync(lock); fs.unlinkSync(lockPath);
 }

@@ -127,3 +127,26 @@ test('user mandate caps buys at $5 and permits no daily loss cap', async () => {
   assert.equal(riskDecision(store.state, token(), c, now).eligible, true);
   const e = new Engine(c, store); await assert.rejects(e.place(token(), 'buy', '5.01', {}), /mandate/);
 });
+test('state replacement tolerates temporary Windows sharing violations', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mint-ops-sharing-test-'));
+  const rename = fs.renameSync;
+  let attempts = 0;
+  try {
+    const store = new StateFile(dir, config()); store.save(); store.state.cashUsd = 95;
+    fs.renameSync = (...args) => {
+      if (++attempts <= 2) throw Object.assign(new Error('sharing violation'), { code: 'EPERM' });
+      return rename(...args);
+    };
+    store.save(); assert.equal(attempts, 3);
+    assert.equal(new StateFile(dir, config()).state.cashUsd, 95);
+  } finally { fs.renameSync = rename; fs.rmSync(dir, { recursive: true }); }
+});
+test('permanent state replacement errors remain fatal', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mint-ops-save-failure-'));
+  const rename = fs.renameSync;
+  try {
+    const store = new StateFile(dir, config()); store.save();
+    fs.renameSync = () => { throw Object.assign(new Error('no space'), { code: 'ENOSPC' }); };
+    assert.throws(() => store.save(), /no space/);
+  } finally { fs.renameSync = rename; fs.rmSync(dir, { recursive: true }); }
+});

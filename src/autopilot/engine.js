@@ -19,7 +19,16 @@ export class StateFile {
     const tmp = `${this.file}.tmp`;
     const fd = fs.openSync(tmp, 'w');
     try { fs.writeFileSync(fd, JSON.stringify(this.state)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    fs.renameSync(tmp, this.file);
+    // Windows antivirus/readers can briefly deny replacement even though the
+    // temporary file was written successfully. Retry only transient share errors;
+    // retain atomic replacement and still fail closed if the file stays locked.
+    for (let attempt = 0; ; attempt++) {
+      try { fs.renameSync(tmp, this.file); break; }
+      catch (error) {
+        if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 6) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * 2 ** attempt);
+      }
+    }
   }
   event(row) { fs.appendFileSync(path.join(this.dir, 'events.jsonl'), `${JSON.stringify({ at: Date.now(), ...row })}\n`); }
 }

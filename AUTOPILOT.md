@@ -29,6 +29,8 @@ npm run autopilot:once
 npm run autopilot
 ```
 
+限时模拟运行：`npm run autopilot -- --duration-sec 900`，到时停止新循环，等在途请求收尾后退出并释放进程锁。Windows 状态文件原子替换遇到短暂 EPERM/EACCES/EBUSY 时会有限重试，持续失败仍显式报错。
+
 自定义配置：`node scripts/autopilot.mjs --config /absolute/path/config.json`。相对 dataDir 基于仓库根目录解析。默认 `data/autopilot/`：
 
 - `paper-state.json`：模拟账户、持仓、分批止盈状态、北京时间日预算、订单。
@@ -87,7 +89,7 @@ Node fetch 默认不一定读取 Windows 系统代理。本机联调使用现有
 - [Chainstack pumpfun-bonkfun-bot](https://github.com/chainstacklabs/pumpfun-bonkfun-bot)：参考持仓独立管理与迁移后路由的设计，没有安装或执行它的交易代码。
 - [Pump 官方 SDK/IDL](https://github.com/pump-fun/pump-public-docs)：后续原生 Solana 订阅的依据。
 
-2026-11-11：17 项 `npm test`、包含新增模块的 `npm run check`、`npm run test:prompt` 通过。代理配置后完整单轮采到 910 个去重币（该时点样本，非全市场），13 个源请求均无错误。没有执行实盘订单；未配置通知渠道。Grok Bot 部署交接见 [GROKBOT-HANDOFF.md](GROKBOT-HANDOFF.md)。
+2026-11-11：19 项 `npm test`、包含新增模块的 `npm run check`、`npm run test:prompt` 通过。代理配置后完整单轮采到 910 个去重币（该时点样本，非全市场），13 个源请求均无错误。持续模拟中发现一次 Windows 临时文件占用错误，已补充有限重试与回归测试；独立无网络限时运行验证正常退出且不残留锁。没有执行实盘订单；未配置通知渠道。Grok Bot 部署交接见 [GROKBOT-HANDOFF.md](GROKBOT-HANDOFF.md)。
 
 ## “牛逼”案例核对
 
