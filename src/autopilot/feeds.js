@@ -63,10 +63,19 @@ export async function discover(config, request = jsonRequest, onRows = async () 
 }
 export async function audit(token, config, request = jsonRequest) {
   const body = await request(AUDIT_URL, { binanceChainId: token.chainId, contractAddress: token.address, requestId: randomUUID() }, config.timeoutMs);
-  const d = body.data;
+  return normalizeAudit(body.data, token.key);
+}
+export function normalizeAudit(d, key, now = Date.now()) {
   if (d?.hasResult !== true || d?.isSupported !== true) throw new Error('Audit unavailable');
   if (!Array.isArray(d.riskItems) || !d.riskItems.length || d.riskItems.some(g => !Array.isArray(g.details) || !g.details.length || g.details.some(x => typeof x.isHit !== 'boolean'))) throw new Error('Audit schema incomplete');
-  return { at: Date.now(), key: token.key, level: d.riskLevelEnum, verified: d.extraInfo?.isVerified,
+  // The documented numeric scale is 0–1 LOW, 2–3 MEDIUM, 4–5 HIGH.
+  // Live responses sometimes omit the text enum. Preserve unknown as unknown,
+  // and use the stricter grade if both documented forms are present but disagree.
+  const n = number(d.riskLevel), grades = ['LOW', 'MEDIUM', 'HIGH'];
+  const numericGrade = n !== null && Number.isInteger(n) && n >= 0 && n <= 5 ? n <= 1 ? 'LOW' : n <= 3 ? 'MEDIUM' : 'HIGH' : null;
+  let level = d.riskLevelEnum == null ? numericGrade : grades.includes(d.riskLevelEnum) ? d.riskLevelEnum : null;
+  if (level && numericGrade && grades.indexOf(numericGrade) > grades.indexOf(level)) level = numericGrade;
+  return { at: now, key, level, numericRiskLevel: n, levelSource: d.riskLevelEnum == null ? 'numeric' : 'enum', verified: d.extraInfo?.isVerified,
     buyTax: number(d.extraInfo?.buyTax), sellTax: number(d.extraInfo?.sellTax),
     hits: d.riskItems.flatMap(g => g.details).filter(x => x.isHit === true).map(x => x.title) };
 }

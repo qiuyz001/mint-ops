@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { entryDecision, exitDecision, riskDecision, auditAllowed } from '../src/autopilot/strategy.js';
-import { identity, normalizePulse, discover } from '../src/autopilot/feeds.js';
+import { identity, normalizePulse, normalizeAudit, discover } from '../src/autopilot/feeds.js';
 import { Engine, StateFile, initialState, decimal } from '../src/autopilot/engine.js';
 import { BawBroker } from '../src/autopilot/broker.js';
 const config = () => JSON.parse(fs.readFileSync(new URL('../config/autopilot.json', import.meta.url)));
@@ -149,4 +149,21 @@ test('permanent state replacement errors remain fatal', () => {
     fs.renameSync = () => { throw Object.assign(new Error('no space'), { code: 'ENOSPC' }); };
     assert.throws(() => store.save(), /no space/);
   } finally { fs.renameSync = rename; fs.rmSync(dir, { recursive: true }); }
+});
+test('audit accepts documented numeric risk grade when the text enum is absent', () => {
+  const d = { hasResult: true, isSupported: true, riskLevelEnum: null, riskLevel: 0,
+    extraInfo: { isVerified: true, buyTax: '0', sellTax: '0' }, riskItems: [{ details: [{ isHit: false }] }] };
+  const t = token(), a = normalizeAudit(d, t.key, now);
+  assert.equal(a.level, 'LOW'); assert.equal(a.levelSource, 'numeric'); assert.equal(auditAllowed(a, t, config(), now), true);
+  assert.equal(normalizeAudit({ ...d, riskLevel: null }, t.key).level, null);
+  assert.equal(normalizeAudit({ ...d, riskLevel: -1 }, t.key).level, null);
+  assert.equal(normalizeAudit({ ...d, riskLevel: 4 }, t.key).level, 'HIGH');
+});
+test('numeric audit fallback keeps stronger risks and all availability checks', () => {
+  const d = { hasResult: true, isSupported: true, riskLevelEnum: 'LOW', riskLevel: 5,
+    extraInfo: { isVerified: true, buyTax: '0', sellTax: '0' }, riskItems: [{ details: [{ isHit: false }] }] };
+  const t = token(); assert.equal(normalizeAudit(d, t.key).level, 'HIGH');
+  assert.equal(normalizeAudit({ ...d, riskLevelEnum: 'HIGH', riskLevel: 0 }, t.key).level, 'HIGH');
+  assert.throws(() => normalizeAudit({ ...d, hasResult: false }, t.key));
+  assert.throws(() => normalizeAudit({ ...d, riskItems: [] }, t.key));
 });

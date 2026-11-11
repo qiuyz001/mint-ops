@@ -89,7 +89,7 @@ Node fetch 默认不一定读取 Windows 系统代理。本机联调使用现有
 - [Chainstack pumpfun-bonkfun-bot](https://github.com/chainstacklabs/pumpfun-bonkfun-bot)：参考持仓独立管理与迁移后路由的设计，没有安装或执行它的交易代码。
 - [Pump 官方 SDK/IDL](https://github.com/pump-fun/pump-public-docs)：后续原生 Solana 订阅的依据。
 
-2026-11-11：19 项 `npm test`、包含新增模块的 `npm run check`、`npm run test:prompt` 通过。代理配置后完整单轮采到 910 个去重币（该时点样本，非全市场），13 个源请求均无错误。持续模拟中发现一次 Windows 临时文件占用错误，已补充有限重试与回归测试；独立无网络限时运行验证正常退出且不残留锁。没有执行实盘订单；未配置通知渠道。Grok Bot 部署交接见 [GROKBOT-HANDOFF.md](GROKBOT-HANDOFF.md)。
+2026-11-11：21 项 `npm test`、包含新增模块的 `npm run check`、`npm run test:prompt` 通过。代理配置后完整单轮采到 910 个去重币（该时点样本，非全市场），13 个源请求均无错误。随后本机连续模拟 15 分钟，加在途请求收尾共 928 秒：57 轮、1,355 个不同代币、57 条候选提醒（27 个不同币）、0 买入/0 卖出，模拟现金仍为 $100；完整扫描平均间隔约 16.17 秒。记录到 9 次源请求超时与 1 次 Windows 临时文件占用错误。已补充原子替换有限重试；独立无网络限时运行验证正常退出且不残留锁。另外，实际审计响应的 riskLevelEnum 为空但 riskLevel=0，原逻辑拒绝了一条通过市场门槛的候选；现按文档数字等级兼容，并在数字和文字等级冲突时采用更严格评级，缺失/未知仍拒绝。修复由回归测试覆盖，未把修复后的推测成交写回本轮结果。没有执行实盘订单；未配置通知渠道。Grok Bot 部署交接见 [GROKBOT-HANDOFF.md](GROKBOT-HANDOFF.md)。
 
 ## “牛逼”案例核对
 
