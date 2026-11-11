@@ -5,7 +5,7 @@
   "description": "Event-driven BSC mint and launchpad operations with deterministic rules and controlled BAW execution.",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node scripts/mint-ops.mjs observe",
@@ -17,7 +17,10 @@
     "gang-watch:daemon": "node scripts/gang-watch.mjs --watch",
     "test:prompt": "node scripts/gang-prompt-selftest.mjs",
     "status": "node scripts/mint-ops.mjs status",
-    "check": "node --check scripts/mint-ops.mjs && node --check scripts/gang-scan.mjs && node --check scripts/gang-watch.mjs && node --check src/index.js && node --check src/watchers/launchpads.js && node --check src/rules.js && node --check src/watch/gang-api.js && node --check src/watch/signals.js && node --check src/watch/score.js"
+    "check": "node --check scripts/mint-ops.mjs && node --check scripts/gang-scan.mjs && node --check scripts/gang-watch.mjs && node --check src/index.js && node --check src/watchers/launchpads.js && node --check src/rules.js && node --check src/watch/gang-api.js && node --check src/watch/signals.js && node --check src/watch/score.js && node --check scripts/autopilot.mjs && node --check src/autopilot/feeds.js && node --check src/autopilot/strategy.js && node --check src/autopilot/engine.js && node --check src/autopilot/broker.js",
+    "autopilot": "node scripts/autopilot.mjs",
+    "autopilot:once": "node scripts/autopilot.mjs --once",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "ethers": "6.17.0",

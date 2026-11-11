@@ -98,3 +98,6 @@ node scripts/mint-ops.mjs mint boo
 - `NONCE.md`：Nonce 专项；未授权不得 `start_attempt`
 
 非投资建议。新盘、NFT 和领取操作都可能亏损或失败；任何真实操作前必须重新核对链上状态。
+# 多发射台自动扫描（2026-11）
+
+新增 `npm run autopilot`：零模型调用的多链扫描、持仓退出、持久化提醒与默认模拟交易。覆盖范围、运行步骤和实盘边界见 [AUTOPILOT.md](AUTOPILOT.md)。默认未开启实盘。
